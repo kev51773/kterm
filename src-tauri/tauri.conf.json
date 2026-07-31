@@ -13,8 +13,8 @@
   "app": {
     "windows": [
       {
-        "label": "main",
-        "title": "kterm - Scriptable Terminal",
+        "label": "win-1",
+        "title": "kterm.exe - A scriptable terminal - win-1",
         "width": 1000,
         "height": 650,
         "resizable": true,
@@ -23,7 +23,7 @@
         "center": true,
         "decorations": true,
         "transparent": false,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "url": "index.html"
       }
     ],
