@@ -1,0 +1,7 @@
+# Node / npm
+node_modules/
+dist/
+.DS_Store
+
+# Rust / Cargo / Tauri
+/src-tauri/target/
