@@ -73,6 +73,9 @@ pub struct CliArgs {
     #[arg(long, help = "Close selected tab")]
     pub close: bool,
 
+    #[arg(long, help = "Close specified GUI window by ID")]
+    pub close_window: Option<String>,
+
     #[arg(long, help = "Force close without prompt")]
     pub force: bool,
 }

@@ -84,6 +84,11 @@ pub struct TargetTabRequest {
 }
 
 #[derive(Deserialize)]
+pub struct CloseWindowRequest {
+    pub window: String,
+}
+
+#[derive(Deserialize)]
 pub struct ResizeRequest {
     pub cols: u16,
     pub rows: u16,
@@ -114,6 +119,7 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/tabs/:id/resize", post(resize_tab))
         .route("/windows", get(list_windows).post(create_window))
         .route("/windows/title", post(set_window_title))
+        .route("/windows/close", post(close_window))
         .route("/tabs/:id/ws", get(ws_handler))
         .layer(cors)
         .with_state(state);
@@ -257,6 +263,25 @@ async fn set_window_title(
         }
     }
 
+    Ok(StatusCode::OK)
+}
+
+async fn close_window(
+    State(state): State<AppState>,
+    Json(req): Json<CloseWindowRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let window_id = req.window;
+    let sessions = state.pty_manager.list_by_window(Some(&window_id));
+    for s in sessions {
+        state.pty_manager.close(&s.id);
+    }
+    state.window_titles.lock().unwrap().remove(&window_id);
+
+    if let Some(app) = &state.app_handle {
+        if let Some(win) = app.get_webview_window(&window_id) {
+            let _ = win.close();
+        }
+    }
     Ok(StatusCode::OK)
 }
 
