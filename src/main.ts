@@ -76,6 +76,15 @@ async function syncTabs() {
     const remoteTabs: TabData[] = await res.json();
     const remoteIds = new Set(remoteTabs.map((t) => t.id));
 
+    // Snapshot siblings of the active pane BEFORE removals, so we can stay
+    // within the same layout group if the active pane exits.
+    const previousActiveTabId = activeTabId;
+    const previousActiveGroup = previousActiveTabId
+      ? (currentLayouts.find((n) => containsTab(n, previousActiveTabId))
+          ? getTabIdsInNode(currentLayouts.find((n) => containsTab(n, previousActiveTabId))!)
+          : [])
+      : [];
+
     let tabListChanged = false;
     for (const id of tabsMap.keys()) {
       if (!remoteIds.has(id)) {
@@ -118,7 +127,11 @@ async function syncTabs() {
           }
         });
       } else if ((!activeTabId || !tabsMap.has(activeTabId)) && remoteTabs.length > 0) {
-        switchTab(remoteTabs[0].id);
+        // Prefer a sibling pane from the same layout group before falling back to tab[0].
+        const sibling = previousActiveGroup.find(
+          (id) => id !== previousActiveTabId && tabsMap.has(id)
+        );
+        switchTab(sibling ?? remoteTabs[0].id);
       } else if (layoutChanged) {
         renderActiveLayout();
         renderTabBarHeaders();
@@ -129,6 +142,7 @@ async function syncTabs() {
   } catch (e) {
     console.warn('Failed to sync tabs with daemon', e);
   }
+
 }
 
 
