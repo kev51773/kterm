@@ -1,4 +1,4 @@
-use crate::pty::PtyManager;
+use crate::pty::{LayoutNode, PtyManager, SplitDirection};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -27,7 +27,9 @@ pub struct AppState {
     pub pty_manager: PtyManager,
     pub app_handle: Option<tauri::AppHandle>,
     pub window_titles: Arc<Mutex<HashMap<String, String>>>,
+    pub window_layouts: Arc<Mutex<HashMap<String, Vec<LayoutNode>>>>,
 }
+
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TabInfo {
@@ -101,6 +103,26 @@ pub struct WindowInfo {
     pub title: String,
 }
 
+#[derive(Deserialize)]
+pub struct SplitTabRequest {
+    pub direction: Option<String>,
+    pub profile: Option<String>,
+    pub move_tab_id: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct SplitTabResponse {
+    pub split_id: String,
+    pub new_tab_id: String,
+    pub target_tab_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateRatioRequest {
+    pub split_id: String,
+    pub ratio: f32,
+}
+
 pub async fn run_server(addr_str: &str, state: AppState) {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -109,6 +131,8 @@ pub async fn run_server(addr_str: &str, state: AppState) {
 
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/layout", get(get_window_layout))
+        .route("/layout/ratio", post(update_layout_ratio))
         .route("/tabs", get(list_tabs).post(create_tab))
         .route("/tabs/send", post(send_text))
         .route("/tabs/title", post(set_title))
@@ -117,12 +141,16 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/tabs/close", post(close_tabs))
         .route("/tabs/focus", post(focus_tabs))
         .route("/tabs/:id/resize", post(resize_tab))
+        .route("/tabs/:id/split", post(split_tab))
+        .route("/tabs/:id/unsplit", post(unsplit_tab))
+        .route("/tabs/:id/explode", post(explode_tab))
         .route("/windows", get(list_windows).post(create_window))
         .route("/windows/title", post(set_window_title))
         .route("/windows/close", post(close_window))
         .route("/tabs/:id/ws", get(ws_handler))
         .layer(cors)
         .with_state(state);
+
 
     let addr: SocketAddr = addr_str.parse().expect("Invalid daemon address");
     tracing::info!("Starting Axum daemon on {}", addr);
@@ -189,6 +217,14 @@ async fn create_tab(
     let badge = session.badge.lock().unwrap().clone();
     let color = session.color.lock().unwrap().clone();
 
+    {
+        let mut layouts = state.window_layouts.lock().unwrap();
+        let win_layouts = layouts.entry(window_id.clone()).or_insert_with(Vec::new);
+        win_layouts.push(LayoutNode::Pane {
+            tab_id: session.id.clone(),
+        });
+    }
+
     Ok(Json(TabInfo {
         id: session.id.clone(),
         pid: session.pid,
@@ -199,6 +235,7 @@ async fn create_tab(
         color,
     }))
 }
+
 
 async fn send_text(
     State(state): State<AppState>,
@@ -326,12 +363,27 @@ async fn close_tabs(
         return Err((StatusCode::NOT_FOUND, "No matching tabs found".to_string()));
     }
 
-    for session in sessions {
+    for session in &sessions {
         state.pty_manager.close(&session.id);
+        let mut layouts = state.window_layouts.lock().unwrap();
+        if let Some(win_layouts) = layouts.get_mut(&session.window_id) {
+            let mut remove_indices = Vec::new();
+            for (idx, node) in win_layouts.iter_mut().enumerate() {
+                if matches!(node, LayoutNode::Pane { tab_id } if tab_id == &session.id) {
+                    remove_indices.push(idx);
+                } else if node.contains_tab(&session.id) {
+                    node.remove_tab(&session.id);
+                }
+            }
+            for idx in remove_indices.into_iter().rev() {
+                win_layouts.remove(idx);
+            }
+        }
     }
 
     Ok(StatusCode::OK)
 }
+
 
 async fn resize_tab(
     State(state): State<AppState>,
@@ -494,3 +546,186 @@ async fn handle_websocket(socket: WebSocket, session: Arc<crate::pty::PtySession
         _ = (&mut recv_task) => send_task.abort(),
     };
 }
+
+async fn split_tab(
+    State(state): State<AppState>,
+    Path(target_id): Path<String>,
+    payload: Option<Json<SplitTabRequest>>,
+) -> Result<Json<SplitTabResponse>, (StatusCode, String)> {
+    let req = payload.map(|p| p.0).unwrap_or_else(|| SplitTabRequest {
+        direction: None,
+        profile: None,
+        move_tab_id: None,
+    });
+
+    let dir_str = req.direction.as_deref().unwrap_or("right").to_lowercase();
+    let (direction, insert_first) = match dir_str.as_str() {
+        "up" | "top" => (SplitDirection::Vertical, true),
+        "down" | "vertical" | "v" | "bottom" => (SplitDirection::Vertical, false),
+        "left" => (SplitDirection::Horizontal, true),
+        _ => (SplitDirection::Horizontal, false),
+    };
+
+    let resolved = state.pty_manager.resolve_tabs(&[target_id.clone()]);
+    let target_session = resolved
+        .first()
+        .ok_or((StatusCode::NOT_FOUND, "Target tab not found".to_string()))?;
+    let target_tab_id = target_session.id.clone();
+    let window_id = target_session.window_id.clone();
+
+    let new_tab_id = if let Some(move_id) = req.move_tab_id.filter(|m| !m.trim().is_empty()) {
+        let move_sess = state
+            .pty_manager
+            .get(&move_id)
+            .ok_or((StatusCode::NOT_FOUND, "Move tab not found".to_string()))?;
+
+        let mut layouts = state.window_layouts.lock().unwrap();
+        let win_layouts = layouts.entry(window_id.clone()).or_insert_with(Vec::new);
+        win_layouts.retain(|node| match node {
+            LayoutNode::Pane { tab_id } => tab_id != &move_id,
+            _ => !node.contains_tab(&move_id),
+        });
+        move_sess.id.clone()
+    } else {
+        let profile = req.profile.unwrap_or_else(|| "powershell".to_string());
+        let tab_id = format!("tab-{}", TAB_COUNTER.fetch_add(1, Ordering::SeqCst));
+        let _ = state
+            .pty_manager
+            .spawn(tab_id.clone(), profile, window_id.clone())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        tab_id
+    };
+
+    let mut layouts = state.window_layouts.lock().unwrap();
+    let win_layouts = layouts.entry(window_id).or_insert_with(Vec::new);
+    let mut split_id = String::new();
+
+    let mut found = false;
+    for node in win_layouts.iter_mut() {
+        if node.contains_tab(&target_tab_id) {
+            node.split_at(&target_tab_id, direction, &new_tab_id, insert_first);
+            if let LayoutNode::Split { id, .. } = node {
+                split_id = id.clone();
+            }
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        let mut root = LayoutNode::Pane {
+            tab_id: target_tab_id.clone(),
+        };
+        root.split_at(&target_tab_id, direction, &new_tab_id, insert_first);
+        if let LayoutNode::Split { ref id, .. } = root {
+            split_id = id.clone();
+        }
+        win_layouts.push(root);
+    }
+
+
+    Ok(Json(SplitTabResponse {
+        split_id,
+        new_tab_id,
+        target_tab_id,
+    }))
+}
+
+async fn unsplit_tab(
+    State(state): State<AppState>,
+    Path(target_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let resolved = state.pty_manager.resolve_tabs(&[target_id.clone()]);
+    let target_session = resolved
+        .first()
+        .ok_or((StatusCode::NOT_FOUND, "Target tab not found".to_string()))?;
+    let target_tab_id = target_session.id.clone();
+    let window_id = target_session.window_id.clone();
+
+    let mut layouts = state.window_layouts.lock().unwrap();
+    if let Some(win_layouts) = layouts.get_mut(&window_id) {
+        for node in win_layouts.iter_mut() {
+            if node.contains_tab(&target_tab_id) {
+                node.unsplit_pane(&target_tab_id);
+                break;
+            }
+        }
+        win_layouts.push(LayoutNode::Pane {
+            tab_id: target_tab_id.clone(),
+        });
+    }
+
+    Ok(Json(serde_json::json!({ "unsplit_tab_id": target_tab_id })))
+}
+
+async fn explode_tab(
+    State(state): State<AppState>,
+    Path(target_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let resolved = state.pty_manager.resolve_tabs(&[target_id.clone()]);
+    let target_session = resolved
+        .first()
+        .ok_or((StatusCode::NOT_FOUND, "Target tab not found".to_string()))?;
+    let target_tab_id = target_session.id.clone();
+    let window_id = target_session.window_id.clone();
+
+    let mut exploded = Vec::new();
+    let mut layouts = state.window_layouts.lock().unwrap();
+    if let Some(win_layouts) = layouts.get_mut(&window_id) {
+        if let Some(pos) = win_layouts.iter().position(|n| n.contains_tab(&target_tab_id)) {
+            let tree = win_layouts.remove(pos);
+            exploded = tree.collect_tabs();
+            for tid in &exploded {
+                win_layouts.push(LayoutNode::Pane {
+                    tab_id: tid.clone(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "exploded_tab_ids": exploded })))
+}
+
+async fn update_layout_ratio(
+    State(state): State<AppState>,
+    Json(req): Json<UpdateRatioRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let mut layouts = state.window_layouts.lock().unwrap();
+    for win_layouts in layouts.values_mut() {
+        for node in win_layouts.iter_mut() {
+            if node.update_ratio(&req.split_id, req.ratio) {
+                return Ok(StatusCode::OK);
+            }
+        }
+    }
+    Err((StatusCode::NOT_FOUND, "Split ID not found".to_string()))
+}
+
+async fn get_window_layout(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Json<Vec<LayoutNode>> {
+    let window_id = params
+        .get("window")
+        .cloned()
+        .unwrap_or_else(|| "win-1".to_string());
+    let mut layouts = state.window_layouts.lock().unwrap();
+    let win_layouts = layouts.entry(window_id.clone()).or_insert_with(Vec::new);
+
+    let active_tabs = state.pty_manager.list_by_window(Some(&window_id));
+    let active_tab_ids: Vec<String> = active_tabs.into_iter().map(|s| s.id.clone()).collect();
+
+
+    let mut tracked = Vec::new();
+    for node in win_layouts.iter() {
+        tracked.extend(node.collect_tabs());
+    }
+    for tab_id in active_tab_ids {
+        if !tracked.contains(&tab_id) {
+            win_layouts.push(LayoutNode::Pane { tab_id });
+        }
+    }
+
+    Json(win_layouts.clone())
+}
+

@@ -133,6 +133,80 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
         return Ok(());
     }
 
+    // Split, Unsplit, or Explode operations (default target to "active" if select_tab is empty)
+    if args.split_right || args.split_left || args.split_down || args.split_up || args.unsplit || args.explode_split {
+        let targets = if args.select_tab.is_empty() {
+            vec!["active".to_string()]
+        } else {
+            args.select_tab.clone()
+        };
+
+        if args.split_right || args.split_left || args.split_down || args.split_up {
+            let direction = if args.split_left {
+                "left"
+            } else if args.split_up {
+                "up"
+            } else if args.split_down {
+                "down"
+            } else {
+                "right"
+            };
+            for target in &targets {
+                let body = json!({
+                    "direction": direction,
+                    "profile": args.profile.clone(),
+                    "move_tab_id": args.move_tab.clone(),
+                });
+                let res = client
+                    .post(format!("{}/tabs/{}/split", base_url, target))
+                    .json(&body)
+                    .send()
+                    .map_err(|e| format!("Failed to split tab {}: {}", target, e))?;
+
+                if res.status().is_success() {
+                    let val: serde_json::Value = res.json().map_err(|e| e.to_string())?;
+                    if let Some(id) = val["new_tab_id"].as_str() {
+                        println!("{}", id);
+                    } else {
+                        println!("{}", serde_json::to_string_pretty(&val).unwrap());
+                    }
+                } else {
+                    return Err(format!("Split failed: {}", res.text().unwrap_or_default()));
+                }
+            }
+            return Ok(());
+        }
+
+
+        if args.unsplit {
+            for target in &targets {
+                let res = client
+                    .post(format!("{}/tabs/{}/unsplit", base_url, target))
+                    .send()
+                    .map_err(|e| format!("Failed to unsplit tab {}: {}", target, e))?;
+                if !res.status().is_success() {
+                    return Err(format!("Unsplit failed: {}", res.text().unwrap_or_default()));
+                }
+            }
+            return Ok(());
+        }
+
+        if args.explode_split {
+            for target in &targets {
+                let res = client
+                    .post(format!("{}/tabs/{}/explode", base_url, target))
+                    .send()
+                    .map_err(|e| format!("Failed to explode split for tab {}: {}", target, e))?;
+                if !res.status().is_success() {
+                    return Err(format!("Explode split failed: {}", res.text().unwrap_or_default()));
+                }
+            }
+            return Ok(());
+        }
+
+        return Ok(());
+    }
+
     // Action on selected tabs
     if !args.select_tab.is_empty() {
         let targets = &args.select_tab;
@@ -226,6 +300,8 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
 
         return Ok(());
     }
+
+
 
     // Default action: Spawn new tab (with optional profile and window)
     let body = json!({

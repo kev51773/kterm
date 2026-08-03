@@ -78,4 +78,27 @@ pub struct CliArgs {
 
     #[arg(long, help = "Force close without prompt")]
     pub force: bool,
+
+    #[arg(long, help = "Split selected tab horizontally to the right")]
+    pub split_right: bool,
+
+    #[arg(long, help = "Split selected tab horizontally to the left")]
+    pub split_left: bool,
+
+    #[arg(long, help = "Split selected tab vertically downward")]
+    pub split_down: bool,
+
+    #[arg(long, help = "Split selected tab vertically upward")]
+    pub split_up: bool,
+
+
+    #[arg(long, help = "Move existing tab ID into split layout")]
+    pub move_tab: Option<String>,
+
+    #[arg(long, help = "Detach split pane back to standalone tab")]
+    pub unsplit: bool,
+
+    #[arg(long, help = "Separate all panes in split layout into standalone tabs")]
+    pub explode_split: bool,
 }
+

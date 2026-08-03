@@ -43,6 +43,14 @@ fn main() {
         "kterm.exe - A scriptable terminal - win-1".to_string(),
     );
 
+    let window_layouts = Arc::new(Mutex::new(HashMap::new()));
+    window_layouts.lock().unwrap().insert(
+        "win-1".to_string(),
+        vec![pty::LayoutNode::Pane {
+            tab_id: "tab-101".to_string(),
+        }],
+    );
+
     tauri::Builder::default()
         .setup(move |app| {
             if let Some(window) = app.get_webview_window("win-1") {
@@ -66,7 +74,9 @@ fn main() {
                 pty_manager,
                 app_handle: Some(app_handle),
                 window_titles,
+                window_layouts,
             };
+
 
             tauri::async_runtime::spawn(async move {
                 daemon::run_server("127.0.0.1:9999", daemon_state).await;

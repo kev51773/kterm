@@ -191,6 +191,12 @@ impl PtyManager {
         let lock = self.sessions.lock().unwrap();
         let mut result = Vec::new();
         for target in targets {
+            if target == "active" || target.is_empty() {
+                if let Some(first) = lock.values().next() {
+                    result.push(first.clone());
+                    continue;
+                }
+            }
             if let Some(sess) = lock.get(target) {
                 result.push(sess.clone());
                 continue;
@@ -202,6 +208,12 @@ impl PtyManager {
                 }
             }
         }
+        if result.is_empty() {
+            if let Some(first) = lock.values().next() {
+                result.push(first.clone());
+            }
+        }
         result
     }
+
 }

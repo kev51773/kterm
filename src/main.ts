@@ -1,11 +1,11 @@
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { renderLayoutTree, LayoutNode } from './components/SplitGrid';
 
 const DAEMON_URL = 'http://127.0.0.1:9999';
 const WS_URL = 'ws://127.0.0.1:9999';
 
-// Extract window label from URL parameter (e.g., ?window=win-2) or default to 'win-1'
 const urlParams = new URLSearchParams(window.location.search);
 const currentWindowId = urlParams.get('window') || 'win-1';
 
@@ -23,19 +23,33 @@ interface TabData {
 
 interface TabInstance {
   id: string;
+  title: string;
+  badge?: string;
+  color?: string;
   term: Terminal;
   fitAddon: FitAddon;
   ws: WebSocket | null;
   element: HTMLElement;
-  tabElement: HTMLElement;
 }
 
 const tabsMap = new Map<string, TabInstance>();
 let activeTabId: string | null = null;
+let activePaneId: string | null = null;
+let currentLayouts: LayoutNode[] = [];
 
 const tabsListEl = document.getElementById('tabs-list') as HTMLElement;
 const terminalContainerEl = document.getElementById('terminal-container') as HTMLElement;
 const addTabBtn = document.getElementById('add-tab-btn') as HTMLButtonElement;
+
+// Context Menu Element
+const contextMenuEl = document.createElement('div');
+contextMenuEl.className = 'context-menu';
+contextMenuEl.style.display = 'none';
+document.body.appendChild(contextMenuEl);
+
+window.addEventListener('click', () => {
+  contextMenuEl.style.display = 'none';
+});
 
 addTabBtn.addEventListener('click', async () => {
   try {
@@ -59,17 +73,14 @@ async function syncTabs() {
     const res = await fetch(`${DAEMON_URL}/tabs?window=${encodeURIComponent(currentWindowId)}`);
     if (!res.ok) return;
     const remoteTabs: TabData[] = await res.json();
-
     const remoteIds = new Set(remoteTabs.map((t) => t.id));
 
-    // Remove tabs that no longer belong to this window or daemon
     for (const id of tabsMap.keys()) {
       if (!remoteIds.has(id)) {
         removeTabLocal(id);
       }
     }
 
-    // Add or update remote tabs belonging to this window
     for (const tabData of remoteTabs) {
       if (!tabsMap.has(tabData.id)) {
         createTabLocal(tabData);
@@ -78,8 +89,16 @@ async function syncTabs() {
       }
     }
 
+    const layoutRes = await fetch(`${DAEMON_URL}/layout?window=${encodeURIComponent(currentWindowId)}`);
+    if (layoutRes.ok) {
+      currentLayouts = await layoutRes.json();
+    }
+
     if (!activeTabId && remoteTabs.length > 0) {
       switchTab(remoteTabs[0].id);
+    } else {
+      renderActiveLayout();
+      renderTabBarHeaders();
     }
   } catch (e) {
     console.warn('Failed to sync tabs with daemon', e);
@@ -96,7 +115,7 @@ async function initDaemonConnection() {
         return;
       }
     } catch {
-      // Daemon is starting up, retry shortly
+      // Daemon starting up
     }
     attempts++;
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -110,7 +129,6 @@ function createTabLocal(tabData: TabData) {
   const pane = document.createElement('div');
   pane.className = 'terminal-pane';
   pane.id = `pane-${id}`;
-  terminalContainerEl.appendChild(pane);
 
   const term = new Terminal({
     cursorBlink: true,
@@ -126,44 +144,61 @@ function createTabLocal(tabData: TabData) {
   term.loadAddon(fitAddon);
   term.open(pane);
 
-  const tabEl = document.createElement('div');
-  tabEl.className = 'tab-item';
-  tabEl.id = `tab-header-${id}`;
+  term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+    if (e.type === 'keydown') {
+      const isCtrlShift = (e.ctrlKey || e.metaKey) && e.shiftKey;
+      const isAltShift = e.altKey && e.shiftKey;
 
-  const titleEl = document.createElement('span');
-  titleEl.className = 'tab-title';
-  titleEl.textContent = tabData.title || `Tab ${id}`;
-
-  const closeEl = document.createElement('span');
-  closeEl.className = 'tab-close';
-  closeEl.innerHTML = '&times;';
-  closeEl.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    closeTab(id);
+      if ((isCtrlShift || isAltShift) && e.code === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        splitPane(id, 'right');
+        return false;
+      }
+      if ((isCtrlShift || isAltShift) && e.code === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        splitPane(id, 'left');
+        return false;
+      }
+      if ((isCtrlShift || isAltShift) && e.code === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        splitPane(id, 'down');
+        return false;
+      }
+      if ((isCtrlShift || isAltShift) && e.code === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        splitPane(id, 'up');
+        return false;
+      }
+      if ((isCtrlShift || isAltShift) && (e.code === 'Delete' || e.code === 'KeyW')) {
+        e.preventDefault();
+        e.stopPropagation();
+        unsplitPane(id);
+        return false;
+      }
+    }
+    return true;
   });
 
-  tabEl.appendChild(titleEl);
-  if (tabData.badge) {
-    const badgeEl = document.createElement('span');
-    badgeEl.className = 'tab-badge';
-    badgeEl.textContent = tabData.badge;
-    tabEl.appendChild(badgeEl);
-  }
-  tabEl.appendChild(closeEl);
 
-  tabEl.addEventListener('click', () => {
-    switchTab(id);
+
+  pane.addEventListener('contextmenu', (e: MouseEvent) => {
+    e.preventDefault();
+    showContextMenu(e.clientX, e.clientY, id);
   });
-
-  tabsListEl.appendChild(tabEl);
 
   const instance: TabInstance = {
     id,
+    title: tabData.title || `Tab ${id}`,
+    badge: tabData.badge,
+    color: tabData.color,
     term,
     fitAddon,
     ws: null,
     element: pane,
-    tabElement: tabEl,
   };
 
   tabsMap.set(id, instance);
@@ -175,27 +210,9 @@ function updateTabLocal(tabData: TabData) {
   const instance = tabsMap.get(id);
   if (!instance) return;
 
-  const titleEl = instance.tabElement.querySelector('.tab-title');
-  if (titleEl) {
-    titleEl.textContent = tabData.title || `Tab ${id}`;
-  }
-
-  let badgeEl = instance.tabElement.querySelector('.tab-badge');
-  if (tabData.badge) {
-    if (!badgeEl) {
-      badgeEl = document.createElement('span');
-      badgeEl.className = 'tab-badge';
-      const closeBtn = instance.tabElement.querySelector('.tab-close');
-      instance.tabElement.insertBefore(badgeEl, closeBtn);
-    }
-    badgeEl.textContent = tabData.badge;
-  } else if (badgeEl) {
-    badgeEl.remove();
-  }
-
-  if (tabData.color) {
-    instance.tabElement.style.borderColor = tabData.color;
-  }
+  instance.title = tabData.title || `Tab ${id}`;
+  instance.badge = tabData.badge;
+  instance.color = tabData.color;
 }
 
 function connectWebSocket(instance: TabInstance) {
@@ -231,23 +248,159 @@ function connectWebSocket(instance: TabInstance) {
   });
 }
 
+function getTabIdsInNode(node: LayoutNode): string[] {
+  if (node.type === 'pane') {
+    return [node.tab_id];
+  }
+  return [...getTabIdsInNode(node.first), ...getTabIdsInNode(node.second)];
+}
+
+function renderTabBarHeaders() {
+  tabsListEl.innerHTML = '';
+
+  for (const layoutNode of currentLayouts) {
+    const paneIds = getTabIdsInNode(layoutNode);
+    if (paneIds.length === 0) continue;
+
+    const focusedPaneId = paneIds.includes(activePaneId!) ? activePaneId! : paneIds[0];
+    const tabInst = tabsMap.get(focusedPaneId);
+    const rawTitle = tabInst?.title || focusedPaneId;
+
+    // Encase title in [] for split tab groups
+    const displayTitle = paneIds.length > 1 ? `[${rawTitle}]` : rawTitle;
+
+    const tabEl = document.createElement('div');
+    tabEl.className = 'tab-item';
+    if (activeTabId && paneIds.includes(activeTabId)) {
+      tabEl.classList.add('active');
+    }
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'tab-title';
+    titleEl.textContent = displayTitle;
+    tabEl.appendChild(titleEl);
+
+    if (tabInst?.badge) {
+      const badgeEl = document.createElement('span');
+      badgeEl.className = 'tab-badge';
+      badgeEl.textContent = tabInst.badge;
+      tabEl.appendChild(badgeEl);
+    }
+
+    if (tabInst?.color) {
+      tabEl.style.borderColor = tabInst.color;
+    }
+
+    const closeEl = document.createElement('span');
+    closeEl.className = 'tab-close';
+    closeEl.innerHTML = '&times;';
+    closeEl.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      for (const pid of paneIds) {
+        closeTab(pid);
+      }
+    });
+    tabEl.appendChild(closeEl);
+
+    tabEl.addEventListener('click', () => {
+      switchTab(focusedPaneId);
+    });
+
+    tabsListEl.appendChild(tabEl);
+  }
+}
+
+function containsTab(node: LayoutNode, targetId: string): boolean {
+  if (node.type === 'pane') {
+    return node.tab_id === targetId;
+  }
+  return containsTab(node.first, targetId) || containsTab(node.second, targetId);
+}
+
+function renderActiveLayout() {
+  if (!activeTabId) return;
+
+  const activeLayoutNode = currentLayouts.find((node) => containsTab(node, activeTabId!));
+
+  terminalContainerEl.innerHTML = '';
+
+  if (activeLayoutNode) {
+    const layoutEl = renderLayoutTree(
+      activeLayoutNode,
+      (tabId: string) => {
+        const inst = tabsMap.get(tabId);
+        if (!inst) return null;
+        inst.element.classList.add('active');
+        if (tabId === activePaneId) {
+          inst.element.classList.add('active-focus');
+        } else {
+          inst.element.classList.remove('active-focus');
+        }
+        return inst.element;
+      },
+      activePaneId,
+      {
+        onRatioChange: async (splitId, ratio) => {
+          try {
+            await fetch(`${DAEMON_URL}/layout/ratio`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ split_id: splitId, ratio }),
+            });
+          } catch (e) {
+            console.error('Failed to update ratio', e);
+          }
+        },
+        onPaneFocus: (tabId) => {
+          setFocusedPane(tabId);
+        },
+      }
+    );
+    terminalContainerEl.appendChild(layoutEl);
+
+    setTimeout(() => {
+      for (const [id, instance] of tabsMap.entries()) {
+        if (containsTab(activeLayoutNode, id)) {
+          instance.fitAddon.fit();
+        }
+      }
+    }, 50);
+  }
+}
+
+function setFocusedPane(tabId: string) {
+  activePaneId = tabId;
+  activeTabId = tabId;
+  for (const [id, instance] of tabsMap.entries()) {
+    if (id === tabId) {
+      instance.element.classList.add('active-focus');
+      instance.term.focus();
+    } else {
+      instance.element.classList.remove('active-focus');
+    }
+  }
+
+  const wrappers = terminalContainerEl.querySelectorAll('.split-pane-wrapper');
+  wrappers.forEach((w) => {
+    const el = w as HTMLElement;
+    if (el.dataset.tabId === tabId) {
+      el.classList.add('active-focus');
+    } else {
+      el.classList.remove('active-focus');
+    }
+  });
+
+  renderTabBarHeaders();
+}
+
+
 function switchTab(id: string) {
   if (!tabsMap.has(id)) return;
   activeTabId = id;
+  activePaneId = id;
 
-  for (const [tabId, instance] of tabsMap.entries()) {
-    if (tabId === id) {
-      instance.element.classList.add('active');
-      instance.tabElement.classList.add('active');
-      setTimeout(() => {
-        instance.fitAddon.fit();
-        instance.term.focus();
-      }, 30);
-    } else {
-      instance.element.classList.remove('active');
-      instance.tabElement.classList.remove('active');
-    }
-  }
+  renderActiveLayout();
+  setFocusedPane(id);
 }
 
 async function closeTab(id: string) {
@@ -272,11 +425,11 @@ function removeTabLocal(id: string) {
   }
   instance.term.dispose();
   instance.element.remove();
-  instance.tabElement.remove();
   tabsMap.delete(id);
 
   if (activeTabId === id) {
     activeTabId = null;
+    activePaneId = null;
     const remainingIds = Array.from(tabsMap.keys());
     if (remainingIds.length > 0) {
       switchTab(remainingIds[0]);
@@ -284,18 +437,119 @@ function removeTabLocal(id: string) {
   }
 }
 
-// Automatic resize observer for perfect terminal alignment
+// Context Menu Logic
+function showContextMenu(x: number, y: number, targetTabId: string) {
+  contextMenuEl.innerHTML = `
+    <div class="context-menu-item" id="ctx-split-right">Split Right <span class="context-menu-shortcut">Ctrl+Shift+Right</span></div>
+    <div class="context-menu-item" id="ctx-split-left">Split Left <span class="context-menu-shortcut">Ctrl+Shift+Left</span></div>
+    <div class="context-menu-item" id="ctx-split-down">Split Down <span class="context-menu-shortcut">Ctrl+Shift+Down</span></div>
+    <div class="context-menu-item" id="ctx-split-up">Split Up <span class="context-menu-shortcut">Ctrl+Shift+Up</span></div>
+    <div class="context-menu-item" id="ctx-unsplit">Un-split Pane <span class="context-menu-shortcut">Ctrl+Shift+Del</span></div>
+    <div class="context-menu-item" id="ctx-close">Close Pane</div>
+  `;
+
+  contextMenuEl.style.left = `${x}px`;
+  contextMenuEl.style.top = `${y}px`;
+  contextMenuEl.style.display = 'block';
+
+  document.getElementById('ctx-split-right')?.addEventListener('click', () => {
+    splitPane(targetTabId, 'right');
+  });
+
+  document.getElementById('ctx-split-left')?.addEventListener('click', () => {
+    splitPane(targetTabId, 'left');
+  });
+
+  document.getElementById('ctx-split-down')?.addEventListener('click', () => {
+    splitPane(targetTabId, 'down');
+  });
+
+  document.getElementById('ctx-split-up')?.addEventListener('click', () => {
+    splitPane(targetTabId, 'up');
+  });
+
+  document.getElementById('ctx-unsplit')?.addEventListener('click', () => {
+    unsplitPane(targetTabId);
+  });
+
+  document.getElementById('ctx-close')?.addEventListener('click', () => {
+    closeTab(targetTabId);
+  });
+}
+
+async function splitPane(targetId: string, direction: 'right' | 'left' | 'down' | 'up') {
+  try {
+    const res = await fetch(`${DAEMON_URL}/tabs/${targetId}/split`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      await syncTabs();
+      setFocusedPane(data.new_tab_id);
+    }
+  } catch (e) {
+    console.error('Failed to split pane', e);
+  }
+}
+
+async function unsplitPane(targetId: string) {
+  try {
+    const res = await fetch(`${DAEMON_URL}/tabs/${targetId}/unsplit`, {
+      method: 'POST',
+    });
+    if (res.ok) {
+      await syncTabs();
+      switchTab(targetId);
+    }
+  } catch (e) {
+    console.error('Failed to unsplit pane', e);
+  }
+}
+
+// Global Keyboard Shortcuts
+window.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (!activePaneId) return;
+
+  const isCtrlShift = (e.ctrlKey || e.metaKey) && e.shiftKey;
+  const isAltShift = e.altKey && e.shiftKey;
+
+  if ((isCtrlShift || isAltShift) && e.code === 'ArrowRight') {
+    e.preventDefault();
+    splitPane(activePaneId, 'right');
+  } else if ((isCtrlShift || isAltShift) && e.code === 'ArrowLeft') {
+    e.preventDefault();
+    splitPane(activePaneId, 'left');
+  } else if ((isCtrlShift || isAltShift) && e.code === 'ArrowDown') {
+    e.preventDefault();
+    splitPane(activePaneId, 'down');
+  } else if ((isCtrlShift || isAltShift) && e.code === 'ArrowUp') {
+    e.preventDefault();
+    splitPane(activePaneId, 'up');
+  } else if ((isCtrlShift || isAltShift) && (e.code === 'Delete' || e.code === 'KeyW')) {
+    e.preventDefault();
+    unsplitPane(activePaneId);
+  }
+});
+
+
+
+// Automatic resize observer for active layout
 const resizeObserver = new ResizeObserver(() => {
   if (activeTabId) {
-    const instance = tabsMap.get(activeTabId);
-    if (instance) {
-      instance.fitAddon.fit();
+    const activeLayoutNode = currentLayouts.find((node) => containsTab(node, activeTabId!));
+    if (activeLayoutNode) {
+      for (const [id, instance] of tabsMap.entries()) {
+        if (containsTab(activeLayoutNode, id)) {
+          instance.fitAddon.fit();
+        }
+      }
     }
   }
 });
 
 resizeObserver.observe(terminalContainerEl);
 
-// Initialize with daemon retry loop & periodic sync
 initDaemonConnection();
 setInterval(syncTabs, 2000);
