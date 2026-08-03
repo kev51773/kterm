@@ -201,12 +201,12 @@ $w1_t3 = & kterm.exe --select-tab $w1_t2 --split-down --profile wsl
 | Keybinding | Action |
 | :--- | :--- |
 | `Ctrl+Shift+T` | Spawn New Tab (Default Profile) |
-| `Ctrl+Shift+W` | Close Active Tab / Pane |
+| `Ctrl+Shift+Del` | Close / Un-split Active Pane |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle Next / Previous Tab |
 | `Ctrl+Shift+Right` | Split Right |
 | `Ctrl+Shift+Left` | Split Left |
 | `Ctrl+Shift+Down` | Split Down |
 | `Ctrl+Shift+Up` | Split Up |
-| `Ctrl+Shift+Del` | Un-split Current Pane |
 | `Ctrl+Shift+1..9` | Switch to Tab N |
+
 
