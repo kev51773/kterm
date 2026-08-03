@@ -87,8 +87,14 @@ impl LayoutNode {
 # Split off $t1 to the right (returns $t2)
 $t2 = .\kterm.exe --select-tab $t1 --split-right --profile git-bash
 
+# Split off $t1 to the left
+.\kterm.exe --select-tab $t1 --split-left --profile git-bash
+
 # Split off $t2 downward (returns $t3)
 $t3 = .\kterm.exe --select-tab $t2 --split-down --profile wsl
+
+# Split off $t2 upward
+.\kterm.exe --select-tab $t2 --split-up --profile wsl
 
 # Move existing tab $t4 into space below $t1
 .\kterm.exe --select-tab $t1 --split-down --move-tab $t4
@@ -104,8 +110,15 @@ $t3 = .\kterm.exe --select-tab $t2 --split-down --profile wsl
 
 ## 5. UI Context Menu & Keyboard Shortcuts
 
-- **ContextMenu**: Right-click pane -> "Split Right (`Alt+Shift+D`)", "Split Down (`Alt+Shift+-`)", "Move to New Window", "Un-split Pane".
+- **ContextMenu**: Right-click pane -> "Split Right (`Ctrl+Shift+Right`)", "Split Left (`Ctrl+Shift+Left`)", "Split Down (`Ctrl+Shift+Down`)", "Split Up (`Ctrl+Shift+Up`)", "Un-split Pane (`Ctrl+Shift+Del`)", "Close Pane".
 - **Keybindings**:
-  - `Alt+Shift+D`: Split Right
-  - `Alt+Shift+Minus`: Split Down
-  - `Alt+Shift+W`: Un-split active pane
+  - `Ctrl+Shift+Right`: Split Right
+  - `Ctrl+Shift+Left`: Split Left
+  - `Ctrl+Shift+Down`: Split Down
+  - `Ctrl+Shift+Up`: Split Up
+  - `Ctrl+Shift+Del`: Un-split active pane / close split
+- **Behavioral Polish**:
+  - **Profile Inheritance**: Splitting a pane without specifying `--profile` inherits the profile of the target pane.
+  - **Graceful Exit**: `exit 0` clean process exit automatically closes pane and collapses layout. Non-zero exit code shows warning notice before closing.
+  - **Sibling Focus Inheritance**: When a split pane closes, focus transitions to a sibling pane in the same split group.
+

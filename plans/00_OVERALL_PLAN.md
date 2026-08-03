@@ -86,10 +86,13 @@ pub enum LayoutNode {
 | | `kterm.exe --select-tab <ID/Title> --set-badge <BADGE>` | Set visual badge |
 | | `kterm.exe --select-tab <ID/Title> --set-color <COLOR>` | Set tab accent color |
 | **Splits** | `kterm.exe --select-tab <ID> --split-right [--profile P]` | Split right |
+| | `kterm.exe --select-tab <ID> --split-left [--profile P]` | Split left |
 | | `kterm.exe --select-tab <ID> --split-down [--profile P]` | Split down |
+| | `kterm.exe --select-tab <ID> --split-up [--profile P]` | Split up |
 | | `kterm.exe --select-tab <ID> --split-down --move-tab <TAB_ID>` | Move tab into split |
 | | `kterm.exe --select-tab <ID> --unsplit` | Detach pane to tab |
 | | `kterm.exe --select-tab <ID> --explode-split` | Separate all split panes |
+
 | **Sync / Read** | `kterm.exe --select-tab <ID> --read-text [--tail N]` | Read buffer |
 | | `kterm.exe --select-tab <ID> --wait-for <TEXT...> [--timeout 30s]` | Block until match |
 | **Focus / Close** | `kterm.exe --select-tab <ID> --focus` | Bring window to front |

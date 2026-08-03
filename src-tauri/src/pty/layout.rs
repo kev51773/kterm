@@ -98,24 +98,28 @@ impl LayoutNode {
         }
 
         match self {
-            LayoutNode::Pane { tab_id } if tab_id == target_tab_id => {
-                false
-            }
+            LayoutNode::Pane { tab_id } if tab_id == target_tab_id => false,
             LayoutNode::Split { first, second, .. } => {
-                if matches!(**first, LayoutNode::Pane { ref tab_id } if tab_id == target_tab_id) {
-                    *self = *second.clone();
-                    return true;
+                if first.contains_tab(target_tab_id) {
+                    if matches!(**first, LayoutNode::Pane { ref tab_id } if tab_id == target_tab_id) {
+                        *self = *second.clone();
+                        return true;
+                    }
+                    return first.remove_tab(target_tab_id);
                 }
-                if matches!(**second, LayoutNode::Pane { ref tab_id } if tab_id == target_tab_id) {
-                    *self = *first.clone();
-                    return true;
+                if second.contains_tab(target_tab_id) {
+                    if matches!(**second, LayoutNode::Pane { ref tab_id } if tab_id == target_tab_id) {
+                        *self = *first.clone();
+                        return true;
+                    }
+                    return second.remove_tab(target_tab_id);
                 }
-
-                first.remove_tab(target_tab_id) || second.remove_tab(target_tab_id)
+                false
             }
             _ => false,
         }
     }
+
 
     pub fn unsplit_pane(&mut self, target_tab_id: &str) -> bool {
         self.remove_tab(target_tab_id)

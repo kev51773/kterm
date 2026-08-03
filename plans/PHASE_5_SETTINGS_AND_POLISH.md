@@ -35,7 +35,9 @@ Implement user configuration management (`config.json`), a dedicated Settings UI
 ```json
 {
   "default_profile": "powershell",
+  "close_on_exit": "graceful", // "graceful" | "always" | "never"
   "font": {
+
     "family": "Consolas, 'Courier New', monospace",
     "size": 14
   },

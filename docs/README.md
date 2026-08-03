@@ -106,8 +106,14 @@ kterm.exe --select-tab "Production Server" --set-color "#ff3333"
 # Split off $t1 to the right with profile (returns new tab handle $t2)
 $t2 = kterm.exe --select-tab $t1 --split-right --profile git-bash
 
+# Split off $t1 to the left with profile
+kterm.exe --select-tab $t1 --split-left --profile git-bash
+
 # Split off $t2 downward with profile (returns new bottom-right tab handle $t3)
 $t3 = kterm.exe --select-tab $t2 --split-down --profile wsl
+
+# Split off $t2 upward with profile
+kterm.exe --select-tab $t2 --split-up --profile wsl
 
 # Move an existing standalone tab into a split pane below $t1
 kterm.exe --select-tab $t1 --split-down --move-tab tab-999
@@ -197,7 +203,10 @@ $w1_t3 = & kterm.exe --select-tab $w1_t2 --split-down --profile wsl
 | `Ctrl+Shift+T` | Spawn New Tab (Default Profile) |
 | `Ctrl+Shift+W` | Close Active Tab / Pane |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle Next / Previous Tab |
-| `Alt+Shift+D` | Split Right |
-| `Alt+Shift+Minus` | Split Down |
-| `Alt+Shift+W` | Un-split Current Pane |
+| `Ctrl+Shift+Right` | Split Right |
+| `Ctrl+Shift+Left` | Split Left |
+| `Ctrl+Shift+Down` | Split Down |
+| `Ctrl+Shift+Up` | Split Up |
+| `Ctrl+Shift+Del` | Un-split Current Pane |
 | `Ctrl+Shift+1..9` | Switch to Tab N |
+
