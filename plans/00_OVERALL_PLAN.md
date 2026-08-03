@@ -103,5 +103,6 @@ pub enum LayoutNode {
 
 1. **`plans/PHASE_1_POC.md`**: Core Tauri + Rust `portable-pty` setup, Axum daemon on port 9999, WebSocket PTY bridge, xterm.js rendering.
 2. **`plans/PHASE_2_CLI_AND_MULTITAB.md`**: Clap CLI parser with tail-arg capture, single-instance client mode, HTTP client IPC dispatcher, multi-window & multi-tab state map, title targeting.
-3. **`plans/PHASE_3_SPLITS_AND_UI.md`**: Target-based split engine (`/tabs/:id/split`), frontend split grid layout, context menus, keybindings, `--unsplit`, `--move-tab`.
-4. **`plans/PHASE_4_AUTOMATION_AND_EXPORTER.md`**: Ring-buffer output tracker, `--read-text`, `--wait-for`, script exporter engine (`--export-script`), badges, colors, and polish.
+3. **`plans/PHASE_3_SPLITS_AND_UI.md`**: Target-based split engine (`/tabs/:id/split`), frontend split grid layout, split CLI commands (`--split-right`, `--split-down`, `--unsplit`, `--move-tab`).
+4. **`plans/PHASE_4_AUTOMATION_AND_EXPORTER.md`**: Ring-buffer output tracker, `--read-text`, `--wait-for`, script exporter engine (`--export-script`), badges, colors.
+5. **`plans/PHASE_5_SETTINGS_AND_POLISH.md`**: User `config.json` profile definitions, Settings UI modal, custom context menus, smart `Ctrl+C` copy, middle-click paste, shell padding, and extensible backlog.
