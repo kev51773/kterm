@@ -29,6 +29,7 @@ interface TabInstance {
   term: Terminal;
   fitAddon: FitAddon;
   ws: WebSocket | null;
+  wsClosingIntentionally: boolean;
   element: HTMLElement;
 }
 
@@ -75,15 +76,18 @@ async function syncTabs() {
     const remoteTabs: TabData[] = await res.json();
     const remoteIds = new Set(remoteTabs.map((t) => t.id));
 
+    let tabListChanged = false;
     for (const id of tabsMap.keys()) {
       if (!remoteIds.has(id)) {
         removeTabLocal(id);
+        tabListChanged = true;
       }
     }
 
     for (const tabData of remoteTabs) {
       if (!tabsMap.has(tabData.id)) {
         createTabLocal(tabData);
+        tabListChanged = true;
       } else {
         updateTabLocal(tabData);
       }
@@ -92,21 +96,41 @@ async function syncTabs() {
     const layoutRes = await fetch(`${DAEMON_URL}/layout?window=${encodeURIComponent(currentWindowId)}`);
     if (layoutRes.ok) {
       const newLayouts: LayoutNode[] = await layoutRes.json();
-      const layoutChanged = JSON.stringify(newLayouts) !== JSON.stringify(currentLayouts);
+      const layoutChanged = tabListChanged || JSON.stringify(newLayouts) !== JSON.stringify(currentLayouts);
       currentLayouts = newLayouts;
 
-      if (!activeTabId && remoteTabs.length > 0) {
+      if (tabsMap.size === 0) {
+        activeTabId = null;
+        activePaneId = null;
+        terminalContainerEl.innerHTML = '';
+        renderTabBarHeaders();
+
+        // Auto-create new tab so window is never empty or unresponsive
+        fetch(`${DAEMON_URL}/tabs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile: 'powershell', window: currentWindowId }),
+        }).then(async (createRes) => {
+          if (createRes.ok) {
+            const newTab: TabData = await createRes.json();
+            createTabLocal(newTab);
+            switchTab(newTab.id);
+          }
+        });
+      } else if ((!activeTabId || !tabsMap.has(activeTabId)) && remoteTabs.length > 0) {
         switchTab(remoteTabs[0].id);
       } else if (layoutChanged) {
         renderActiveLayout();
         renderTabBarHeaders();
       }
+
     }
 
   } catch (e) {
     console.warn('Failed to sync tabs with daemon', e);
   }
 }
+
 
 async function initDaemonConnection() {
   let attempts = 0;
@@ -201,6 +225,7 @@ function createTabLocal(tabData: TabData) {
     term,
     fitAddon,
     ws: null,
+    wsClosingIntentionally: false,
     element: pane,
   };
 
@@ -241,8 +266,12 @@ function connectWebSocket(instance: TabInstance) {
   };
 
   ws.onclose = () => {
-    instance.term.write('\r\n\x1b[31m[Disconnected]\x1b[0m\r\n');
+    if (instance.wsClosingIntentionally) return;
+    setTimeout(() => {
+      syncTabs();
+    }, 100);
   };
+
 
   instance.term.onData((data) => {
     if (ws.readyState === WebSocket.OPEN) {
@@ -297,12 +326,22 @@ function renderTabBarHeaders() {
     const closeEl = document.createElement('span');
     closeEl.className = 'tab-close';
     closeEl.innerHTML = '&times;';
-    closeEl.addEventListener('click', (ev) => {
+    closeEl.addEventListener('click', async (ev) => {
       ev.stopPropagation();
-      for (const pid of paneIds) {
-        closeTab(pid);
+      try {
+        const res = await fetch(`${DAEMON_URL}/tabs/close`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targets: paneIds }),
+        });
+        if (res.ok) {
+          await syncTabs();
+        }
+      } catch (e) {
+        console.error('Failed to close tab group', e);
       }
     });
+
     tabEl.appendChild(closeEl);
 
     tabEl.addEventListener('click', () => {
@@ -412,12 +451,15 @@ function switchTab(id: string) {
 
 async function closeTab(id: string) {
   try {
-    await fetch(`${DAEMON_URL}/tabs/close`, {
+    const res = await fetch(`${DAEMON_URL}/tabs/close`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targets: [id] }),
     });
-    removeTabLocal(id);
+    if (res.ok) {
+      removeTabLocal(id);
+      await syncTabs();
+    }
   } catch (e) {
     console.error('Failed to close tab', e);
   }
@@ -428,21 +470,19 @@ function removeTabLocal(id: string) {
   if (!instance) return;
 
   if (instance.ws) {
+    instance.wsClosingIntentionally = true;
     instance.ws.close();
   }
   instance.term.dispose();
   instance.element.remove();
   tabsMap.delete(id);
 
-  if (activeTabId === id) {
+  if (activeTabId === id || activePaneId === id) {
     activeTabId = null;
     activePaneId = null;
-    const remainingIds = Array.from(tabsMap.keys());
-    if (remainingIds.length > 0) {
-      switchTab(remainingIds[0]);
-    }
   }
 }
+
 
 // Context Menu Logic
 function showContextMenu(x: number, y: number, targetTabId: string) {

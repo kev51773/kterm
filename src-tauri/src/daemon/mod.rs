@@ -124,6 +124,11 @@ pub struct UpdateRatioRequest {
 }
 
 pub async fn run_server(addr_str: &str, state: AppState) {
+    let state_clone = state.clone();
+    state.pty_manager.set_exit_callback(move |tab_id| {
+        auto_close_tab(&state_clone, &tab_id);
+    });
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -151,7 +156,6 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .layer(cors)
         .with_state(state);
 
-
     let addr: SocketAddr = addr_str.parse().expect("Invalid daemon address");
     tracing::info!("Starting Axum daemon on {}", addr);
 
@@ -160,6 +164,29 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .expect("Failed to bind daemon TCP listener");
     axum::serve(listener, app).await.unwrap();
 }
+
+pub fn auto_close_tab(state: &AppState, tab_id: &str) {
+    if let Some(sess) = state.pty_manager.get(tab_id) {
+        let window_id = sess.window_id.clone();
+        state.pty_manager.close(tab_id);
+
+        let mut layouts = state.window_layouts.lock().unwrap();
+        if let Some(win_layouts) = layouts.get_mut(&window_id) {
+            let mut remove_indices = Vec::new();
+            for (idx, node) in win_layouts.iter_mut().enumerate() {
+                if matches!(node, LayoutNode::Pane { tab_id: ref tid } if tid == tab_id) {
+                    remove_indices.push(idx);
+                } else if node.contains_tab(tab_id) {
+                    node.remove_tab(tab_id);
+                }
+            }
+            for idx in remove_indices.into_iter().rev() {
+                win_layouts.remove(idx);
+            }
+        }
+    }
+}
+
 
 async fn health_check() -> StatusCode {
     StatusCode::OK
@@ -363,22 +390,27 @@ async fn close_tabs(
         return Err((StatusCode::NOT_FOUND, "No matching tabs found".to_string()));
     }
 
-    for session in &sessions {
-        state.pty_manager.close(&session.id);
+    {
         let mut layouts = state.window_layouts.lock().unwrap();
-        if let Some(win_layouts) = layouts.get_mut(&session.window_id) {
-            let mut remove_indices = Vec::new();
-            for (idx, node) in win_layouts.iter_mut().enumerate() {
-                if matches!(node, LayoutNode::Pane { tab_id } if tab_id == &session.id) {
-                    remove_indices.push(idx);
-                } else if node.contains_tab(&session.id) {
-                    node.remove_tab(&session.id);
+        for session in &sessions {
+            if let Some(win_layouts) = layouts.get_mut(&session.window_id) {
+                let mut remove_indices = Vec::new();
+                for (idx, node) in win_layouts.iter_mut().enumerate() {
+                    if matches!(node, LayoutNode::Pane { tab_id } if tab_id == &session.id) {
+                        remove_indices.push(idx);
+                    } else if node.contains_tab(&session.id) {
+                        node.remove_tab(&session.id);
+                    }
+                }
+                for idx in remove_indices.into_iter().rev() {
+                    win_layouts.remove(idx);
                 }
             }
-            for idx in remove_indices.into_iter().rev() {
-                win_layouts.remove(idx);
-            }
         }
+    }
+
+    for session in &sessions {
+        state.pty_manager.close(&session.id);
     }
 
     Ok(StatusCode::OK)
@@ -475,16 +507,9 @@ async fn ws_handler(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    let session = state.pty_manager.get(&id);
-    match session {
+    match state.pty_manager.get(&id) {
         Some(sess) => ws.on_upgrade(move |socket| handle_websocket(socket, sess)),
-        None => {
-            let profile = "powershell".to_string();
-            match state.pty_manager.spawn(id.clone(), profile, "win-1".to_string()) {
-                Ok(sess) => ws.on_upgrade(move |socket| handle_websocket(socket, sess)),
-                Err(_) => (StatusCode::NOT_FOUND, "Tab missing and spawn failed").into_response(),
-            }
-        }
+        None => (StatusCode::NOT_FOUND, "Tab not found").into_response(),
     }
 }
 
@@ -715,6 +740,22 @@ async fn get_window_layout(
     let active_tabs = state.pty_manager.list_by_window(Some(&window_id));
     let active_tab_ids: Vec<String> = active_tabs.into_iter().map(|s| s.id.clone()).collect();
 
+    // Prune dead tabs from layout tree
+    let mut remove_indices = Vec::new();
+    for (idx, node) in win_layouts.iter_mut().enumerate() {
+        let node_tabs = node.collect_tabs();
+        for dead_id in node_tabs {
+            if !active_tab_ids.contains(&dead_id) {
+                node.remove_tab(&dead_id);
+            }
+        }
+        if matches!(node, LayoutNode::Pane { ref tab_id } if !active_tab_ids.contains(tab_id)) {
+            remove_indices.push(idx);
+        }
+    }
+    for idx in remove_indices.into_iter().rev() {
+        win_layouts.remove(idx);
+    }
 
     let mut tracked = Vec::new();
     for node in win_layouts.iter() {
@@ -728,4 +769,5 @@ async fn get_window_layout(
 
     Json(win_layouts.clone())
 }
+
 

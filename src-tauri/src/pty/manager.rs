@@ -4,6 +4,8 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 
+pub type ExitCallback = Arc<dyn Fn(String) + Send + Sync>;
+
 pub struct PtySession {
     pub id: String,
     pub pid: u32,
@@ -12,11 +14,16 @@ pub struct PtySession {
     pub title: Arc<Mutex<String>>,
     pub badge: Arc<Mutex<Option<String>>>,
     pub color: Arc<Mutex<Option<String>>>,
+    #[allow(dead_code)]
+    pub is_dead: Arc<Mutex<bool>>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub output_buffer: Arc<Mutex<Vec<u8>>>,
     pub tx: broadcast::Sender<Vec<u8>>,
     _master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
-    _child: Arc<Mutex<Box<dyn Child + Send>>>,
+    // Wrapped in Option so the waiter thread can take() it (releasing the lock)
+    // before calling the blocking .wait(). This prevents close() from deadlocking
+    // when it tries to kill() through the same mutex.
+    _child: Arc<Mutex<Option<Box<dyn Child + Send>>>>,
 }
 
 impl PtySession {
@@ -34,6 +41,30 @@ impl PtySession {
     pub fn get_output_history(&self) -> Vec<u8> {
         self.output_buffer.lock().unwrap().clone()
     }
+
+    fn kill_by_pid(&self) {
+        #[cfg(windows)]
+        {
+            // Safe: we're only using the PID to open a handle and terminate.
+            // PROCESS_TERMINATE = 0x0001
+            extern "system" {
+                fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+                fn TerminateProcess(handle: *mut std::ffi::c_void, exit_code: u32) -> i32;
+                fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+            }
+            unsafe {
+                let handle = OpenProcess(0x0001, 0, self.pid);
+                if !handle.is_null() {
+                    TerminateProcess(handle, 1);
+                    CloseHandle(handle);
+                }
+            }
+        }
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(self.pid as libc::pid_t, libc::SIGKILL);
+        }
+    }
 }
 
 unsafe impl Sync for PtySession {}
@@ -41,13 +72,22 @@ unsafe impl Sync for PtySession {}
 #[derive(Clone, Default)]
 pub struct PtyManager {
     sessions: Arc<Mutex<HashMap<String, Arc<PtySession>>>>,
+    on_exit: Arc<Mutex<Option<ExitCallback>>>,
 }
 
 impl PtyManager {
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            on_exit: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn set_exit_callback<F>(&self, cb: F)
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        *self.on_exit.lock().unwrap() = Some(Arc::new(cb));
     }
 
     pub fn spawn(
@@ -66,26 +106,16 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let mut cmd = match profile.to_lowercase().as_str() {
-            "cmd" => {
-                let mut c = CommandBuilder::new("cmd.exe");
-                c.arg("/K");
-                c
-            }
+        let cmd = match profile.to_lowercase().as_str() {
+            "cmd" => CommandBuilder::new("cmd.exe"),
             "wsl" => CommandBuilder::new("wsl.exe"),
             "git-bash" | "bash" => {
                 let mut c = CommandBuilder::new("C:\\Program Files\\Git\\bin\\bash.exe");
                 c.arg("--login");
                 c
             }
-            _ => {
-                let mut c = CommandBuilder::new("powershell.exe");
-                c.arg("-NoExit");
-                c
-            }
+            _ => CommandBuilder::new("powershell.exe"),
         };
-
-        cmd.env("TERM", "xterm-256color");
 
         let child = pair
             .slave
@@ -93,7 +123,9 @@ impl PtyManager {
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         let pid = child.process_id().unwrap_or(0);
-        let writer = Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
+        let writer = Arc::new(Mutex::new(
+            pair.master.take_writer().map_err(|e| e.to_string())?,
+        ));
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
 
         let (tx, _rx) = broadcast::channel::<Vec<u8>>(256);
@@ -101,6 +133,21 @@ impl PtyManager {
         let output_buffer = Arc::new(Mutex::new(Vec::<u8>::with_capacity(65536)));
         let output_buffer_clone = output_buffer.clone();
 
+        let is_dead = Arc::new(Mutex::new(false));
+        let is_dead_clone = is_dead.clone();
+        let self_clone = self.clone();
+        let id_clone = id.clone();
+
+        // Wrap in Option: waiter takes ownership via .take(), releasing the lock before
+        // calling the blocking .wait(). This lets close() acquire the lock independently.
+        let child_arc: Arc<Mutex<Option<Box<dyn Child + Send>>>> =
+            Arc::new(Mutex::new(Some(child)));
+        let child_clone = child_arc.clone();
+
+        let output_buffer_waiter = output_buffer.clone();
+        let tx_waiter = tx.clone();
+
+        // Reader thread for stdout/stderr streaming
         std::thread::spawn(move || {
             let mut buf = [0u8; 1024];
             loop {
@@ -123,6 +170,37 @@ impl PtyManager {
             }
         });
 
+        // Waiter thread: takes the child OUT of the Option (releasing the mutex immediately)
+        // then waits. This is the key fix — the mutex is not held during .wait(), so
+        // close() can always acquire it to kill the process without deadlocking.
+        std::thread::spawn(move || {
+            let child_opt = child_clone.lock().unwrap().take();
+            let exit_code = child_opt
+                .map(|mut c| c.wait().ok().map(|s| s.exit_code()).unwrap_or(0))
+                .unwrap_or(0);
+
+            if exit_code == 0 {
+                let cb_opt = self_clone.on_exit.lock().unwrap().clone();
+                if let Some(cb) = cb_opt {
+                    cb(id_clone);
+                } else {
+                    self_clone.close(&id_clone);
+                }
+            } else {
+                *is_dead_clone.lock().unwrap() = true;
+                let msg = format!(
+                    "\r\n\x1b[33m[Process exited with code {}. Click X or press Ctrl+D to close]\x1b[0m\r\n",
+                    exit_code
+                );
+                let bytes = msg.as_bytes().to_vec();
+                {
+                    let mut guard = output_buffer_waiter.lock().unwrap();
+                    guard.extend_from_slice(&bytes);
+                }
+                let _ = tx_waiter.send(bytes);
+            }
+        });
+
         let default_title = format!("{} ({})", profile, id);
         let session = Arc::new(PtySession {
             id: id.clone(),
@@ -132,11 +210,12 @@ impl PtyManager {
             title: Arc::new(Mutex::new(default_title)),
             badge: Arc::new(Mutex::new(None)),
             color: Arc::new(Mutex::new(None)),
+            is_dead,
             writer,
             output_buffer,
             tx,
             _master: Arc::new(Mutex::new(pair.master)),
-            _child: Arc::new(Mutex::new(child)),
+            _child: child_arc,
         });
 
         session.resize(30, 100);
@@ -180,7 +259,14 @@ impl PtyManager {
     pub fn close(&self, id: &str) -> bool {
         let mut lock = self.sessions.lock().unwrap();
         if let Some(session) = lock.remove(id) {
-            let _ = session._child.lock().unwrap().kill();
+            // Try to take the child handle. If the waiter already took it (None),
+            // kill by PID instead — this unblocks the waiter's .wait() call.
+            let child_opt = session._child.lock().unwrap().take();
+            if let Some(mut child) = child_opt {
+                let _ = child.kill();
+            } else {
+                session.kill_by_pid();
+            }
             true
         } else {
             false
@@ -190,13 +276,17 @@ impl PtyManager {
     pub fn resolve_tabs(&self, targets: &[String]) -> Vec<Arc<PtySession>> {
         let lock = self.sessions.lock().unwrap();
         let mut result = Vec::new();
-        for target in targets {
-            if target == "active" || target.is_empty() {
-                if let Some(first) = lock.values().next() {
-                    result.push(first.clone());
-                    continue;
-                }
+
+        let has_active = targets.is_empty()
+            || targets.iter().any(|t| t == "active" || t.is_empty());
+        if has_active {
+            if let Some(first) = lock.values().next() {
+                result.push(first.clone());
+                return result;
             }
+        }
+
+        for target in targets {
             if let Some(sess) = lock.get(target) {
                 result.push(sess.clone());
                 continue;
@@ -205,15 +295,10 @@ impl PtyManager {
                 let title = sess.title.lock().unwrap().clone();
                 if title.eq_ignore_ascii_case(target) {
                     result.push(sess.clone());
+                    break;
                 }
-            }
-        }
-        if result.is_empty() {
-            if let Some(first) = lock.values().next() {
-                result.push(first.clone());
             }
         }
         result
     }
-
 }
