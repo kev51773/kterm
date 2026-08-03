@@ -91,15 +91,18 @@ async function syncTabs() {
 
     const layoutRes = await fetch(`${DAEMON_URL}/layout?window=${encodeURIComponent(currentWindowId)}`);
     if (layoutRes.ok) {
-      currentLayouts = await layoutRes.json();
+      const newLayouts: LayoutNode[] = await layoutRes.json();
+      const layoutChanged = JSON.stringify(newLayouts) !== JSON.stringify(currentLayouts);
+      currentLayouts = newLayouts;
+
+      if (!activeTabId && remoteTabs.length > 0) {
+        switchTab(remoteTabs[0].id);
+      } else if (layoutChanged) {
+        renderActiveLayout();
+        renderTabBarHeaders();
+      }
     }
 
-    if (!activeTabId && remoteTabs.length > 0) {
-      switchTab(remoteTabs[0].id);
-    } else {
-      renderActiveLayout();
-      renderTabBarHeaders();
-    }
   } catch (e) {
     console.warn('Failed to sync tabs with daemon', e);
   }
@@ -364,9 +367,13 @@ function renderActiveLayout() {
           instance.fitAddon.fit();
         }
       }
+      if (activePaneId) {
+        tabsMap.get(activePaneId)?.term.focus();
+      }
     }, 50);
   }
 }
+
 
 function setFocusedPane(tabId: string) {
   activePaneId = tabId;
