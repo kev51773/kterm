@@ -21,10 +21,17 @@ Implement user configuration management (`config.json`), a dedicated Settings UI
 - If text is selected in xterm -> `Ctrl+C` copies selection to clipboard.
 - If NO text is selected -> `Ctrl+C` sends standard `\x03` (SIGINT) to running process.
 
-### D. Middle-Click Paste
-- Add `auxclick` event listener (middle mouse button) to paste system clipboard content into active PTY stream.
+### E. Tab Navigation & Creation Shortcuts
+- **`Ctrl+Shift+T`**: Spawn a new tab with default profile (`powershell`).
+- **`Ctrl+Tab` / `Ctrl+Shift+Tab`**: Cycle forward / backward through top-level tabs.
+- **`Ctrl+Shift+1..9`**: Jump directly to tab index 1 through 9.
+
+### F. Multi-Window Tab Movement
+- **CLI Flag `--move-to-window <WIN_ID>`**: CLI command to move an active tab session from its current window into another active GUI window (`kterm.exe --select-tab tab-101 --move-to-window win-2`).
+- **REST Handler `POST /tabs/move`**: Re-parents `tab_id` to `target_window_id` and updates layout trees across windows.
 
 ---
+
 
 ## 2. Configuration Engine (`config.json`)
 
