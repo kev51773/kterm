@@ -612,7 +612,7 @@ async fn split_tab(
         });
         move_sess.id.clone()
     } else {
-        let profile = req.profile.unwrap_or_else(|| "powershell".to_string());
+        let profile = req.profile.unwrap_or_else(|| target_session.profile.clone());
         let tab_id = format!("tab-{}", TAB_COUNTER.fetch_add(1, Ordering::SeqCst));
         let _ = state
             .pty_manager
