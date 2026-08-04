@@ -233,6 +233,51 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     }
                 }
             }
+
+            out.push_str(
+                "# ============================================================\n\
+                 # kterm Scripting Cheat Sheet & Examples\n\
+                 # ============================================================\n\
+                 #\n\
+                 # 1. Spawning standalone tabs & windows:\n\
+                 #    $newTab = (& \"$KTERM\" --profile powershell --window win-1).Trim()\n\
+                 #    $newWin = (& \"$KTERM\" --new-window).Trim()\n\
+                 #\n\
+                 # 2. Splitting panes:\n\
+                 #    $rightPane = (& \"$KTERM\" --select-tab \"$tab1\" --split-right --profile wsl).Trim()\n\
+                 #    $downPane  = (& \"$KTERM\" --select-tab \"$tab1\" --split-down --profile cmd).Trim()\n\
+                 #    $leftPane  = (& \"$KTERM\" --select-tab \"$tab1\" --split-left --profile git-bash).Trim()\n\
+                 #    $upPane    = (& \"$KTERM\" --select-tab \"$tab1\" --split-up --profile powershell).Trim()\n\
+                 #\n\
+                 # 3. Sending text / commands to a tab or pane:\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-text \"git status`n\"\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-text \"npm run dev`n\"\n\
+                 #\n\
+                 # 4. Customizing tab titles, badges, and colors:\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-title \"Server Logs\"\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --set-badge \"PROD\"\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --set-color \"#E53935\"\n\
+                 #\n\
+                 # 5. Window title & focus:\n\
+                 #    & \"$KTERM\" --window win-1 --set-window-title \"Main Workspace\"\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --focus\n\
+                 #\n\
+                 # 6. Unsplitting / exploding layout:\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --unsplit\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --explode-split\n\
+                 #\n\
+                 # 7. Listing active windows & tabs:\n\
+                 #    & \"$KTERM\" --list-windows\n\
+                 #    & \"$KTERM\" --list-tabs --window win-1 --json\n\
+                 #\n\
+                 # 8. Closing tabs & windows:\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --close --force\n\
+                 #    & \"$KTERM\" --close-window win-1\n\
+                 #\n\
+                 # 9. Exporting window layout to script:\n\
+                 #    & \"$KTERM\" --window win-1 --export-script \"layout.ps1\" --format ps1\n\
+                 # ============================================================\n",
+            );
         }
 
         ExportFormat::Batch => {
@@ -345,6 +390,51 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     }
                 }
             }
+
+            out.push_str(
+                ":: ============================================================\n\
+                 :: kterm Scripting Cheat Sheet & Examples\n\
+                 :: ============================================================\n\
+                 ::\n\
+                 :: 1. Spawning standalone tabs & windows:\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --profile powershell --window win-1`) DO SET NEW_TAB=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --new-window`) DO SET NEW_WIN=%%I\n\
+                 ::\n\
+                 :: 2. Splitting panes:\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-right --profile wsl`) DO SET PANE_R=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-down --profile cmd`) DO SET PANE_D=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-left --profile git-bash`) DO SET PANE_L=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-up --profile powershell`) DO SET PANE_U=%%I\n\
+                 ::\n\
+                 :: 3. Sending text / commands to a tab or pane:\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text \"git status\\n\"\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text \"npm run dev\\n\"\n\
+                 ::\n\
+                 :: 4. Customizing tab titles, badges, and colors:\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-title \"Server Logs\"\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-badge \"PROD\"\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-color \"#E53935\"\n\
+                 ::\n\
+                 :: 5. Window title & focus:\n\
+                 ::    \"%%KTERM%%\" --window win-1 --set-window-title \"Main Workspace\"\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --focus\n\
+                 ::\n\
+                 :: 6. Unsplitting / exploding layout:\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --unsplit\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --explode-split\n\
+                 ::\n\
+                 :: 7. Listing active windows & tabs:\n\
+                 ::    \"%%KTERM%%\" --list-windows\n\
+                 ::    \"%%KTERM%%\" --list-tabs --window win-1 --json\n\
+                 ::\n\
+                 :: 8. Closing tabs & windows:\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --close --force\n\
+                 ::    \"%%KTERM%%\" --close-window win-1\n\
+                 ::\n\
+                 :: 9. Exporting window layout to script:\n\
+                 ::    \"%%KTERM%%\" --window win-1 --export-script \"layout.bat\" --format bat\n\
+                 :: ============================================================\n",
+            );
         }
 
         ExportFormat::Shell => {
@@ -458,6 +548,51 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     }
                 }
             }
+
+            out.push_str(
+                "# ============================================================\n\
+                 # kterm Scripting Cheat Sheet & Examples\n\
+                 # ============================================================\n\
+                 #\n\
+                 # 1. Spawning standalone tabs & windows:\n\
+                 #    new_tab=\"$(\"$KTERM\" --profile powershell --window win-1)\"\n\
+                 #    new_win=\"$(\"$KTERM\" --new-window)\"\n\
+                 #\n\
+                 # 2. Splitting panes:\n\
+                 #    pane_r=\"$(\"$KTERM\" --select-tab \"$tab1\" --split-right --profile wsl)\"\n\
+                 #    pane_d=\"$(\"$KTERM\" --select-tab \"$tab1\" --split-down --profile cmd)\"\n\
+                 #    pane_l=\"$(\"$KTERM\" --select-tab \"$tab1\" --split-left --profile git-bash)\"\n\
+                 #    pane_u=\"$(\"$KTERM\" --select-tab \"$tab1\" --split-up --profile powershell)\"\n\
+                 #\n\
+                 # 3. Sending text / commands to a tab or pane:\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --send-text $'git status\\n'\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --send-text $'npm run dev\\n'\n\
+                 #\n\
+                 # 4. Customizing tab titles, badges, and colors:\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --send-title \"Server Logs\"\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --set-badge \"PROD\"\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --set-color \"#E53935\"\n\
+                 #\n\
+                 # 5. Window title & focus:\n\
+                 #    \"$KTERM\" --window win-1 --set-window-title \"Main Workspace\"\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --focus\n\
+                 #\n\
+                 # 6. Unsplitting / exploding layout:\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --unsplit\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --explode-split\n\
+                 #\n\
+                 # 7. Listing active windows & tabs:\n\
+                 #    \"$KTERM\" --list-windows\n\
+                 #    \"$KTERM\" --list-tabs --window win-1 --json\n\
+                 #\n\
+                 # 8. Closing tabs & windows:\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --close --force\n\
+                 #    \"$KTERM\" --close-window win-1\n\
+                 #\n\
+                 # 9. Exporting window layout to script:\n\
+                 #    \"$KTERM\" --window win-1 --export-script \"layout.sh\" --format sh\n\
+                 # ============================================================\n",
+            );
         }
     }
 
