@@ -19,11 +19,23 @@ impl ExportFormat {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionStep {
+    CreateRoot {
+        tab_id: String,
+    },
+    Split {
+        target_id: String,
+        direction: String,
+        new_id: String,
+    },
+}
+
 /// Build and return the script text for the given window.
 ///
-/// Walks the layout tree depth-first (first/left before second/right) to
-/// determine tab creation and split order, then appends metadata commands
-/// (title, badge, colour) for any tabs that have them set.
+/// Walks the layout tree depth-first to create top-level tabs first, then
+/// creates split panes directly using `--select-tab <target> --split-<dir> --profile <profile>`.
+/// Finally appends metadata commands (title, badge, colour) for any tabs that have them set.
 pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) -> String {
     // ── 1. Gather all tabs for this window ──────────────────────────────────
     let sessions = state.pty_manager.list_by_window(Some(window_id));
@@ -42,7 +54,11 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
         })
         .collect();
 
-    // ── 2. Determine DFS tab order from layout tree ──────────────────────────
+    let find_tab = |id: &str| -> Option<&TabInfo> {
+        tab_infos.iter().find(|t| t.id == id)
+    };
+
+    // ── 2. Determine execution steps from layout tree ────────────────────────
     let layouts = state.window_layouts.lock().unwrap();
     let win_layouts = match layouts.get(window_id) {
         Some(l) => l.clone(),
@@ -50,30 +66,38 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
     };
     drop(layouts);
 
-    // Collect tabs in DFS order across all layout nodes.
+    let mut steps: Vec<ActionStep> = Vec::new();
     let mut ordered_tab_ids: Vec<String> = Vec::new();
+
     for node in &win_layouts {
-        collect_dfs(node, &mut ordered_tab_ids);
+        let root_id = first_tab_id(node);
+        if !ordered_tab_ids.contains(&root_id) {
+            ordered_tab_ids.push(root_id.clone());
+        }
+        steps.push(ActionStep::CreateRoot {
+            tab_id: root_id,
+        });
+
+        collect_node_steps(node, &mut steps, &mut ordered_tab_ids);
     }
+
+    // Fallback for any orphaned tabs not in win_layouts
     for t in &tab_infos {
         if !ordered_tab_ids.contains(&t.id) {
             ordered_tab_ids.push(t.id.clone());
+            steps.push(ActionStep::CreateRoot {
+                tab_id: t.id.clone(),
+            });
         }
     }
 
-    // Build the list of TabInfo in DFS order.
+    // Build the list of TabInfo in execution order.
     let ordered_tabs: Vec<&TabInfo> = ordered_tab_ids
         .iter()
-        .filter_map(|id| tab_infos.iter().find(|t| &t.id == id))
+        .filter_map(|id| find_tab(id))
         .collect();
 
-    // ── 3. Build split operations from the layout tree ───────────────────────
-    let mut split_ops: Vec<(String, String, String)> = Vec::new();
-    for node in &win_layouts {
-        collect_splits(node, &mut split_ops);
-    }
-
-    // ── 4. Assign variable names & current exe path ──────────────────────────
+    // ── 3. Assign variable names & current exe path ──────────────────────────
     let exe_path = std::env::current_exe()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "kterm.exe".to_string());
@@ -92,10 +116,10 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
             .unwrap_or_else(|| id.to_string())
     };
 
-    // ── 5. Render script ─────────────────────────────────────────────────────
+    // ── 4. Render script ─────────────────────────────────────────────────────
     let now = chrono_now();
     let tab_count = ordered_tabs.len();
-    let split_count = split_ops.len();
+    let split_count = steps.iter().filter(|s| matches!(s, ActionStep::Split { .. })).count();
 
     let mut out = String::new();
 
@@ -119,44 +143,53 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                 exe_path = exe_path.replace('\'', "''"),
             ));
 
-            // ── Create tabs ──────────────────────────────────────────────────
-            for (i, tab) in ordered_tabs.iter().enumerate() {
-                let var = lookup_var(&tab.id);
-                let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
-                let display_title = if is_default_title {
-                    tab.profile.clone()
-                } else {
-                    tab.title.clone()
-                };
+            for step in &steps {
+                match step {
+                    ActionStep::CreateRoot { tab_id } => {
+                        let var = lookup_var(tab_id);
+                        if let Some(tab) = find_tab(tab_id) {
+                            let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
+                            let display_title = if is_default_title {
+                                tab.profile.clone()
+                            } else {
+                                tab.title.clone()
+                            };
 
-                out.push_str(&format!(
-                    "# Create {} shell for Tab \"{display}\" — assigned to {var}\n\
-                     {var} = (& \"$KTERM\" --profile {profile} --window {window}).Trim()\n\n",
-                    tab.profile,
-                    display = display_title,
-                    var = var,
-                    profile = tab.profile,
-                    window = window_id,
-                ));
+                            out.push_str(&format!(
+                                "# Create {profile} shell for Tab \"{display}\" — assigned to {var}\n\
+                                 {var} = (& \"$KTERM\" --profile {profile} --window {window}).Trim()\n\n",
+                                profile = tab.profile,
+                                display = display_title,
+                                var = var,
+                                window = window_id,
+                            ));
+                        }
+                    }
+                    ActionStep::Split { target_id, direction, new_id } => {
+                        let target_var = lookup_var(target_id);
+                        let new_var = lookup_var(new_id);
+                        let flag = direction_flag_ps1(direction);
+                        if let Some(tab) = find_tab(new_id) {
+                            let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
+                            let display_title = if is_default_title {
+                                tab.profile.clone()
+                            } else {
+                                tab.title.clone()
+                            };
 
-                let _ = i;
-            }
-
-            // ── Reconstruct splits ───────────────────────────────────────────
-            if !split_ops.is_empty() {
-                out.push_str("# --- Reconstruct split layout ---\n\n");
-                for (target_id, direction, new_id) in &split_ops {
-                    let target_var = lookup_var(target_id);
-                    let new_var = lookup_var(new_id);
-                    let flag = direction_flag_ps1(direction);
-                    out.push_str(&format!(
-                        "# Split {target_var} {direction} to place {new_var} beside it\n\
-                         & \"$KTERM\" --select-tab \"{target_var}\" {flag} --move-tab \"{new_var}\"\n\n",
-                        target_var = target_var,
-                        direction = direction,
-                        new_var = new_var,
-                        flag = flag,
-                    ));
+                            out.push_str(&format!(
+                                "# Split {target_var} {direction} for Tab \"{display}\" — assigned to {new_var}\n\
+                                 {new_var} = (& \"$KTERM\" --select-tab \"{target_var}\" {flag} --profile {profile} --window {window}).Trim()\n\n",
+                                target_var = target_var,
+                                direction = direction,
+                                display = display_title,
+                                new_var = new_var,
+                                flag = flag,
+                                profile = tab.profile,
+                                window = window_id,
+                            ));
+                        }
+                    }
                 }
             }
 
@@ -222,41 +255,53 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                 exe_path = exe_path,
             ));
 
-            // ── Create tabs ──────────────────────────────────────────────────
-            for tab in &ordered_tabs {
-                let var = lookup_var(&tab.id);
-                let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
-                let display_title = if is_default_title {
-                    tab.profile.clone()
-                } else {
-                    tab.title.clone()
-                };
+            for step in &steps {
+                match step {
+                    ActionStep::CreateRoot { tab_id } => {
+                        let var = lookup_var(tab_id);
+                        if let Some(tab) = find_tab(tab_id) {
+                            let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
+                            let display_title = if is_default_title {
+                                tab.profile.clone()
+                            } else {
+                                tab.title.clone()
+                            };
 
-                out.push_str(&format!(
-                    ":: Create {profile} shell for Tab \"{display}\" — assigned to {var}\n\
-                     FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --profile {profile} --window {window}`) DO SET {var}=%%I\n\n",
-                    profile = tab.profile,
-                    display = display_title,
-                    var = var,
-                    window = window_id,
-                ));
-            }
+                            out.push_str(&format!(
+                                ":: Create {profile} shell for Tab \"{display}\" — assigned to {var}\n\
+                                 FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --profile {profile} --window {window}`) DO SET {var}=%%I\n\n",
+                                profile = tab.profile,
+                                display = display_title,
+                                var = var,
+                                window = window_id,
+                            ));
+                        }
+                    }
+                    ActionStep::Split { target_id, direction, new_id } => {
+                        let target_var = lookup_var(target_id);
+                        let new_var = lookup_var(new_id);
+                        let flag = direction_flag_ps1(direction);
+                        if let Some(tab) = find_tab(new_id) {
+                            let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
+                            let display_title = if is_default_title {
+                                tab.profile.clone()
+                            } else {
+                                tab.title.clone()
+                            };
 
-            // ── Reconstruct splits ───────────────────────────────────────────
-            if !split_ops.is_empty() {
-                out.push_str(":: --- Reconstruct split layout ---\n\n");
-                for (target_id, direction, new_id) in &split_ops {
-                    let target_var = lookup_var(target_id);
-                    let new_var = lookup_var(new_id);
-                    let flag = direction_flag_ps1(direction);
-                    out.push_str(&format!(
-                        ":: Split %{target_var}% {direction} to place %{new_var}% beside it\n\
-                         \"%%KTERM%%\" --select-tab %{target_var}% {flag} --move-tab %{new_var}%\n\n",
-                        target_var = target_var,
-                        direction = direction,
-                        new_var = new_var,
-                        flag = flag,
-                    ));
+                            out.push_str(&format!(
+                                ":: Split %{target_var}% {direction} for Tab \"{display}\" — assigned to %{new_var}%\n\
+                                 FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %{target_var}% {flag} --profile {profile} --window {window}`) DO SET {new_var}=%%I\n\n",
+                                target_var = target_var,
+                                direction = direction,
+                                display = display_title,
+                                new_var = new_var,
+                                flag = flag,
+                                profile = tab.profile,
+                                window = window_id,
+                            ));
+                        }
+                    }
                 }
             }
 
@@ -323,41 +368,53 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                 sh_exe_path = sh_exe_path,
             ));
 
-            // ── Create tabs ──────────────────────────────────────────────────
-            for tab in &ordered_tabs {
-                let var = lookup_var(&tab.id);
-                let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
-                let display_title = if is_default_title {
-                    tab.profile.clone()
-                } else {
-                    tab.title.clone()
-                };
+            for step in &steps {
+                match step {
+                    ActionStep::CreateRoot { tab_id } => {
+                        let var = lookup_var(tab_id);
+                        if let Some(tab) = find_tab(tab_id) {
+                            let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
+                            let display_title = if is_default_title {
+                                tab.profile.clone()
+                            } else {
+                                tab.title.clone()
+                            };
 
-                out.push_str(&format!(
-                    "# Create {profile} shell for Tab \"{display}\" — assigned to {var}\n\
-                     {var}=\"$(\"$KTERM\" --profile {profile} --window {window})\"\n\n",
-                    profile = tab.profile,
-                    display = display_title,
-                    var = var,
-                    window = window_id,
-                ));
-            }
+                            out.push_str(&format!(
+                                "# Create {profile} shell for Tab \"{display}\" — assigned to {var}\n\
+                                 {var}=\"$(\"$KTERM\" --profile {profile} --window {window})\"\n\n",
+                                profile = tab.profile,
+                                display = display_title,
+                                var = var,
+                                window = window_id,
+                            ));
+                        }
+                    }
+                    ActionStep::Split { target_id, direction, new_id } => {
+                        let target_var = lookup_var(target_id);
+                        let new_var = lookup_var(new_id);
+                        let flag = direction_flag_ps1(direction);
+                        if let Some(tab) = find_tab(new_id) {
+                            let is_default_title = tab.title == format!("{} ({})", tab.profile, tab.id);
+                            let display_title = if is_default_title {
+                                tab.profile.clone()
+                            } else {
+                                tab.title.clone()
+                            };
 
-            // ── Reconstruct splits ───────────────────────────────────────────
-            if !split_ops.is_empty() {
-                out.push_str("# --- Reconstruct split layout ---\n\n");
-                for (target_id, direction, new_id) in &split_ops {
-                    let target_var = lookup_var(target_id);
-                    let new_var = lookup_var(new_id);
-                    let flag = direction_flag_ps1(direction);
-                    out.push_str(&format!(
-                        "# Split ${target_var} {direction} to place ${new_var} beside it\n\
-                         \"$KTERM\" --select-tab \"${target_var}\" {flag} --move-tab \"${new_var}\"\n\n",
-                        target_var = target_var,
-                        direction = direction,
-                        new_var = new_var,
-                        flag = flag,
-                    ));
+                            out.push_str(&format!(
+                                "# Split ${target_var} {direction} for Tab \"{display}\" — assigned to {new_var}\n\
+                                 {new_var}=\"$(\"$KTERM\" --select-tab \"${target_var}\" {flag} --profile {profile} --window {window})\"\n\n",
+                                target_var = target_var,
+                                direction = direction,
+                                display = display_title,
+                                new_var = new_var,
+                                flag = flag,
+                                profile = tab.profile,
+                                window = window_id,
+                            ));
+                        }
+                    }
                 }
             }
 
@@ -409,37 +466,15 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Walk layout tree depth-first, appending tab IDs in first→second order.
-fn collect_dfs(node: &LayoutNode, out: &mut Vec<String>) {
-    match node {
-        LayoutNode::Pane { tab_id } => {
-            if !out.contains(tab_id) {
-                out.push(tab_id.clone());
-            }
-        }
-        LayoutNode::Split { first, second, .. } => {
-            collect_dfs(first, out);
-            collect_dfs(second, out);
-        }
-    }
-}
+/// Walk layout tree depth-first to collect split action steps.
+fn collect_node_steps(
+    node: &LayoutNode,
+    steps: &mut Vec<ActionStep>,
+    ordered_tab_ids: &mut Vec<String>,
+) {
+    if let LayoutNode::Split { direction, first, second, .. } = node {
+        collect_node_steps(first, steps, ordered_tab_ids);
 
-/// Walk layout tree and collect (target_id, direction_str, new_id) for every
-/// Split node encountered depth-first (inner pairs before outer).
-fn collect_splits(node: &LayoutNode, out: &mut Vec<(String, String, String)>) {
-    if let LayoutNode::Split {
-        direction,
-        first,
-        second,
-        ..
-    } = node
-    {
-        // Recurse into children first (inner splits before outer).
-        collect_splits(first, out);
-        collect_splits(second, out);
-
-        // The "first" pane is the anchor; "second" is what gets split in.
-        // We express this as: split at first → place second beside it.
         let target_id = first_tab_id(first);
         let new_id = first_tab_id(second);
         let dir_str = match direction {
@@ -448,7 +483,17 @@ fn collect_splits(node: &LayoutNode, out: &mut Vec<(String, String, String)>) {
         }
         .to_string();
 
-        out.push((target_id, dir_str, new_id));
+        if !ordered_tab_ids.contains(&new_id) {
+            ordered_tab_ids.push(new_id.clone());
+        }
+
+        steps.push(ActionStep::Split {
+            target_id,
+            direction: dir_str,
+            new_id,
+        });
+
+        collect_node_steps(second, steps, ordered_tab_ids);
     }
 }
 
@@ -490,20 +535,17 @@ fn shell_quote_ps1(s: &str) -> String {
 
 /// Current date-time as a human-readable string without pulling in chrono.
 fn chrono_now() -> String {
-    // Use SystemTime — no external dep needed for a display-only timestamp.
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    // Rough UTC breakdown (good enough for a script comment, no DST logic).
     let s = secs % 60;
     let m = (secs / 60) % 60;
     let h = (secs / 3600) % 24;
-    let days = secs / 86400; // days since 1970-01-01
+    let days = secs / 86400;
 
-    // Gregorian calendar approximation.
     let mut year = 1970u32;
     let mut remaining_days = days;
     loop {
