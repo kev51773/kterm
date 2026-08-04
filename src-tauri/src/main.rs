@@ -1,6 +1,3 @@
-// Prevents additional console window on Windows in release, do not remove!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 mod cli;
 mod client;
 mod daemon;
@@ -15,23 +12,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
-#[cfg(windows)]
-fn attach_parent_console() {
-    let env_args: Vec<String> = std::env::args().collect();
-    if env_args.iter().any(|a| a == "--daemon") {
-        return;
-    }
-    extern "system" {
-        fn AttachConsole(dwProcessId: u32) -> i32;
-    }
-    unsafe {
-        AttachConsole(0xFFFFFFFF);
-    }
-}
-
 fn main() {
-    #[cfg(windows)]
-    attach_parent_console();
 
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)

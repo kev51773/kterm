@@ -131,7 +131,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
 
                 out.push_str(&format!(
                     "# Create {} shell for Tab \"{display}\" — assigned to {var}\n\
-                     {var} = (& \"$KTERM\" --profile {profile} --window {window})\n\n",
+                     {var} = (& \"$KTERM\" --profile {profile} --window {window}).Trim()\n\n",
                     tab.profile,
                     display = display_title,
                     var = var,
@@ -151,7 +151,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     let flag = direction_flag_ps1(direction);
                     out.push_str(&format!(
                         "# Split {target_var} {direction} to place {new_var} beside it\n\
-                         & \"$KTERM\" --select-tab {target_var} {flag} --move-tab {new_var}\n\n",
+                         & \"$KTERM\" --select-tab \"{target_var}\" {flag} --move-tab \"{new_var}\"\n\n",
                         target_var = target_var,
                         direction = direction,
                         new_var = new_var,
@@ -175,7 +175,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     if !is_default {
                         out.push_str(&format!(
                             "# Set title for {var}\n\
-                             & \"$KTERM\" --select-tab {var} --send-title {title}\n\n",
+                             & \"$KTERM\" --select-tab \"{var}\" --send-title {title}\n\n",
                             var = var,
                             title = shell_quote_ps1(&tab.title),
                         ));
@@ -184,7 +184,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     if let Some(badge) = &tab.badge {
                         out.push_str(&format!(
                             "# Set badge for {var}\n\
-                             & \"$KTERM\" --select-tab {var} --set-badge {badge}\n\n",
+                             & \"$KTERM\" --select-tab \"{var}\" --set-badge {badge}\n\n",
                             var = var,
                             badge = shell_quote_ps1(badge),
                         ));
@@ -193,7 +193,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     if let Some(color) = &tab.color {
                         out.push_str(&format!(
                             "# Set colour for {var}\n\
-                             & \"$KTERM\" --select-tab {var} --set-color {color}\n\n",
+                             & \"$KTERM\" --select-tab \"{var}\" --set-color {color}\n\n",
                             var = var,
                             color = color,
                         ));

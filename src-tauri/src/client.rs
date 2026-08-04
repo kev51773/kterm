@@ -1,22 +1,20 @@
 use crate::cli::CliArgs;
 use serde_json::json;
+use std::io::Write;
 use std::time::Duration;
 
 pub fn is_daemon_running() -> bool {
-    let client = reqwest::blocking::Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_millis(300))
-        .build();
+    use std::net::{SocketAddr, TcpStream};
+    let addr: SocketAddr = match "127.0.0.1:9999".parse() {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok()
+}
 
-    if let Ok(c) = client {
-        if let Ok(res) = c.get("http://127.0.0.1:9999/health").send() {
-            res.status().is_success()
-        } else {
-            false
-        }
-    } else {
-        false
-    }
+fn safe_println(msg: &str) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stdout(), "{}", msg);
 }
 
 #[cfg(windows)]
@@ -186,9 +184,9 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
         if res.status().is_success() {
             let val: serde_json::Value = res.json().map_err(|e| e.to_string())?;
             if let Some(id) = val["id"].as_str() {
-                println!("{}", id);
+                safe_println(id);
             } else {
-                println!("{}", serde_json::to_string_pretty(&val).unwrap());
+                safe_println(&serde_json::to_string_pretty(&val).unwrap());
             }
         } else {
             return Err(format!("Failed to create window: {}", res.text().unwrap_or_default()));
@@ -315,9 +313,9 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                 if res.status().is_success() {
                     let val: serde_json::Value = res.json().map_err(|e| e.to_string())?;
                     if let Some(id) = val["new_tab_id"].as_str() {
-                        println!("{}", id);
+                        safe_println(id);
                     } else {
-                        println!("{}", serde_json::to_string_pretty(&val).unwrap());
+                        safe_println(&serde_json::to_string_pretty(&val).unwrap());
                     }
                 } else {
                     return Err(format!("Split failed: {}", res.text().unwrap_or_default()));
@@ -488,9 +486,9 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
     if res.status().is_success() {
         let val: serde_json::Value = res.json().map_err(|e| e.to_string())?;
         if let Some(id) = val["id"].as_str() {
-            println!("{}", id);
+            safe_println(id);
         } else {
-            println!("{}", serde_json::to_string_pretty(&val).unwrap());
+            safe_println(&serde_json::to_string_pretty(&val).unwrap());
         }
     } else {
         return Err(format!("Failed to spawn tab: {}", res.text().unwrap_or_default()));
