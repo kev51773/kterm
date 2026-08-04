@@ -19,7 +19,156 @@ pub fn is_daemon_running() -> bool {
     }
 }
 
+#[cfg(windows)]
+fn spawn_daemon_detached(exe_path: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[repr(C)]
+    struct StartupInfoW {
+        cb: u32,
+        reserved: *mut u16,
+        desktop: *mut u16,
+        title: *mut u16,
+        x: u32,
+        y: u32,
+        x_size: u32,
+        y_size: u32,
+        x_count_chars: u32,
+        y_count_chars: u32,
+        fill_attribute: u32,
+        flags: u32,
+        show_window: u16,
+        cb_reserved2: u16,
+        lp_reserved2: *mut u8,
+        h_std_input: *mut std::ffi::c_void,
+        h_std_output: *mut std::ffi::c_void,
+        h_std_error: *mut std::ffi::c_void,
+    }
+
+    #[repr(C)]
+    struct ProcessInformation {
+        h_process: *mut std::ffi::c_void,
+        h_thread: *mut std::ffi::c_void,
+        dw_process_id: u32,
+        dw_thread_id: u32,
+    }
+
+    extern "system" {
+        fn CreateProcessW(
+            app_name: *const u16,
+            cmd_line: *mut u16,
+            proc_attr: *const std::ffi::c_void,
+            thread_attr: *const std::ffi::c_void,
+            inherit_handles: i32,
+            dw_flags: u32,
+            env: *const std::ffi::c_void,
+            dir: *const u16,
+            startup_info: *const StartupInfoW,
+            proc_info: *mut ProcessInformation,
+        ) -> i32;
+
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+
+    let mut exe_str: Vec<u16> = exe_path.as_os_str().encode_wide().collect();
+    exe_str.push(0);
+
+    let mut cmd_line: Vec<u16> = format!("\"{}\" --daemon", exe_path.to_string_lossy())
+        .encode_utf16()
+        .collect();
+    cmd_line.push(0);
+
+    let mut si: StartupInfoW = unsafe { std::mem::zeroed() };
+    si.cb = std::mem::size_of::<StartupInfoW>() as u32;
+
+    let mut pi: ProcessInformation = unsafe { std::mem::zeroed() };
+
+    // DETACHED_PROCESS = 0x8, CREATE_NEW_PROCESS_GROUP = 0x200, CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+    let flags: u32 = 0x00000008 | 0x00000200 | 0x01000000;
+
+    let mut res = unsafe {
+        CreateProcessW(
+            exe_str.as_ptr(),
+            cmd_line.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            0, // bInheritHandles = FALSE (0) -> Zero handle inheritance!
+            flags,
+            std::ptr::null(),
+            std::ptr::null(),
+            &si,
+            &mut pi,
+        )
+    };
+
+    if res == 0 {
+        // Fallback without CREATE_BREAKAWAY_FROM_JOB if job disallows breakaway
+        let fallback_flags: u32 = 0x00000008 | 0x00000200;
+        res = unsafe {
+            CreateProcessW(
+                exe_str.as_ptr(),
+                cmd_line.as_mut_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                fallback_flags,
+                std::ptr::null(),
+                std::ptr::null(),
+                &si,
+                &mut pi,
+            )
+        };
+    }
+
+    if res != 0 {
+        unsafe {
+            if !pi.h_process.is_null() {
+                CloseHandle(pi.h_process);
+            }
+            if !pi.h_thread.is_null() {
+                CloseHandle(pi.h_thread);
+            }
+        }
+        Ok(())
+    } else {
+        Err("Win32 CreateProcessW failed to spawn daemon".to_string())
+    }
+}
+
+pub fn ensure_daemon_running() -> Result<(), String> {
+    if is_daemon_running() {
+        return Ok(());
+    }
+
+    let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+
+    #[cfg(windows)]
+    spawn_daemon_detached(&exe_path)?;
+
+    #[cfg(not(windows))]
+    {
+        let mut cmd = std::process::Command::new(&exe_path);
+        cmd.arg("--daemon");
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        cmd.spawn().map_err(|e| format!("Failed to spawn daemon: {}", e))?;
+    }
+
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(5) {
+        if is_daemon_running() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    Err("Timed out waiting for kterm host daemon to start".to_string())
+}
+
 pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
+    ensure_daemon_running()?;
+
     let client = reqwest::blocking::Client::builder()
         .no_proxy()
         .timeout(Duration::from_secs(5))
@@ -302,6 +451,27 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
     }
 
 
+
+    // Export current window layout to a script file
+    if let Some(out_path) = &args.export_script {
+        let window = args.window.clone().unwrap_or_else(|| "win-1".to_string());
+        let url = format!(
+            "{}/export?window={}&format={}",
+            base_url, window, args.format
+        );
+        let res = client
+            .get(&url)
+            .send()
+            .map_err(|e| format!("Failed to request export: {}", e))?;
+        if !res.status().is_success() {
+            return Err(format!("Export failed: {}", res.text().unwrap_or_default()));
+        }
+        let script = res.text().map_err(|e| e.to_string())?;
+        std::fs::write(out_path, script)
+            .map_err(|e| format!("Failed to write script to '{}': {}", out_path, e))?;
+        println!("Layout script written to: {}", out_path);
+        return Ok(());
+    }
 
     // Default action: Spawn new tab (with optional profile and window)
     let body = json!({

@@ -1,3 +1,4 @@
+use crate::exporter::{export_layout, ExportFormat};
 use crate::pty::{LayoutNode, PtyManager, SplitDirection};
 use axum::{
     extract::{
@@ -153,6 +154,7 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/windows/title", post(set_window_title))
         .route("/windows/close", post(close_window))
         .route("/tabs/:id/ws", get(ws_handler))
+        .route("/export", get(export_script))
         .layer(cors)
         .with_state(state);
 
@@ -233,6 +235,27 @@ async fn create_tab(
         .and_then(|p| p.window.clone())
         .filter(|w| !w.trim().is_empty())
         .unwrap_or_else(|| "win-1".to_string());
+
+    // Reuse untouched single tab-101 if it's the only tab in the window
+    let existing_tabs = state.pty_manager.list_by_window(Some(&window_id));
+    if existing_tabs.len() == 1 {
+        let first = &existing_tabs[0];
+        let default_title = format!("{} ({})", first.profile, first.id);
+        let cur_title = first.title.lock().unwrap().clone();
+        if first.id == "tab-101" && cur_title == default_title && first.profile == profile {
+            let badge = first.badge.lock().unwrap().clone();
+            let color = first.color.lock().unwrap().clone();
+            return Ok(Json(TabInfo {
+                id: first.id.clone(),
+                pid: first.pid,
+                profile: first.profile.clone(),
+                window_id: first.window_id.clone(),
+                title: cur_title,
+                badge,
+                color,
+            }));
+        }
+    }
 
     let tab_id = format!("tab-{}", TAB_COUNTER.fetch_add(1, Ordering::SeqCst));
     let session = state
@@ -768,6 +791,28 @@ async fn get_window_layout(
     }
 
     Json(win_layouts.clone())
+}
+
+/// GET /export?window=win-1&format=ps1
+///
+/// Returns the generated layout script as plain text. The frontend is
+/// responsible for presenting the save dialog and writing the file.
+async fn export_script(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let window_id = params
+        .get("window")
+        .cloned()
+        .unwrap_or_else(|| "win-1".to_string());
+    let format_str = params.get("format").map(|s| s.as_str()).unwrap_or("ps1");
+    let format = ExportFormat::from_str(format_str);
+    let script = export_layout(&state, &window_id, format);
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        script,
+    )
 }
 
 

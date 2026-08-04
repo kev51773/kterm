@@ -100,5 +100,14 @@ pub struct CliArgs {
 
     #[arg(long, help = "Separate all panes in split layout into standalone tabs")]
     pub explode_split: bool,
+
+    #[arg(long, help = "Export current window layout to a script file (path to write)")]
+    pub export_script: Option<String>,
+
+    #[arg(long, default_value = "ps1", help = "Script format: ps1 (default), bat, or sh")]
+    pub format: String,
+
+    #[arg(long, help = "Run in host daemon mode")]
+    pub daemon: bool,
 }
 

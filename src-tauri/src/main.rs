@@ -4,6 +4,7 @@
 mod cli;
 mod client;
 mod daemon;
+mod exporter;
 mod pty;
 
 use clap::Parser;
@@ -14,20 +15,52 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
+#[cfg(windows)]
+fn attach_parent_console() {
+    let env_args: Vec<String> = std::env::args().collect();
+    if env_args.iter().any(|a| a == "--daemon") {
+        return;
+    }
+    extern "system" {
+        fn AttachConsole(dwProcessId: u32) -> i32;
+    }
+    unsafe {
+        AttachConsole(0xFFFFFFFF);
+    }
+}
+
 fn main() {
-    tracing_subscriber::fmt::init();
+    #[cfg(windows)]
+    attach_parent_console();
+
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
 
     let args = CliArgs::parse();
 
-    if client::is_daemon_running() {
+    if args.daemon {
+        run_host_daemon(args);
+        return;
+    }
+
+    if let Err(e) = client::ensure_daemon_running() {
+        eprintln!("Error starting kterm daemon: {}", e);
+        std::process::exit(1);
+    }
+
+    let has_client_args = std::env::args().len() > 1;
+    if has_client_args {
         if let Err(e) = client::handle_client_mode(&args) {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
-        std::process::exit(0);
     }
 
-    // HOST MODE: Spawns Axum daemon server and launches Tauri GUI
+    std::process::exit(0);
+}
+
+fn run_host_daemon(args: CliArgs) {
     let pty_manager = PtyManager::new();
 
     let initial_profile = args
@@ -52,15 +85,17 @@ fn main() {
     );
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
             if let Some(window) = app.get_webview_window("win-1") {
-                println!("[kterm host] Primary window 'win-1' initialized");
+                eprintln!("[kterm host] Primary window 'win-1' initialized");
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
                 let _ = window.show();
                 let _ = window.center();
                 let _ = window.set_focus();
             } else if let Some(window) = app.get_webview_window("main") {
-                println!("[kterm host] Window 'main' fallback initialized");
+                eprintln!("[kterm host] Window 'main' fallback initialized");
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
                 let _ = window.show();
                 let _ = window.center();
@@ -76,7 +111,6 @@ fn main() {
                 window_titles,
                 window_layouts,
             };
-
 
             tauri::async_runtime::spawn(async move {
                 daemon::run_server("127.0.0.1:9999", daemon_state).await;

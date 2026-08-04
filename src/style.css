@@ -119,6 +119,27 @@ html, body {
   color: #ffffff;
 }
 
+#export-script-btn {
+  background: transparent;
+  border: none;
+  color: #abb2bf;
+  font-size: 15px;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  margin-left: 2px;
+}
+
+#export-script-btn:hover {
+  background: #2c313a;
+  color: #98c379;
+}
+
 #terminal-container {
   flex: 1;
   position: relative;

@@ -2,6 +2,8 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { renderLayoutTree, LayoutNode } from './components/SplitGrid';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 
 const DAEMON_URL = 'http://127.0.0.1:9999';
 const WS_URL = 'ws://127.0.0.1:9999';
@@ -614,3 +616,137 @@ resizeObserver.observe(terminalContainerEl);
 
 initDaemonConnection();
 setInterval(syncTabs, 2000);
+
+// ── Export Layout Script ────────────────────────────────────────────────────
+
+const exportBtn = document.getElementById('export-script-btn') as HTMLButtonElement;
+exportBtn.addEventListener('click', () => {
+  showExportFormatPicker();
+});
+
+/**
+ * Shows an inline modal letting the user choose between PS1 and BAT,
+ * then triggers the native save dialog and writes the generated script.
+ */
+function showExportFormatPicker(): void {
+  // Remove any stale picker.
+  document.getElementById('export-format-modal')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'export-format-modal';
+  overlay.style.cssText = [
+    'position:fixed', 'inset:0', 'z-index:10000',
+    'display:flex', 'align-items:center', 'justify-content:center',
+    'background:rgba(0,0,0,0.55)', 'backdrop-filter:blur(2px)',
+  ].join(';');
+
+  const box = document.createElement('div');
+  box.style.cssText = [
+    'background:#1e2128', 'border:1px solid #3e4451',
+    'border-radius:10px', 'padding:24px 28px',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
+    'display:flex', 'flex-direction:column', 'gap:16px',
+    'min-width:260px',
+  ].join(';');
+
+  const title = document.createElement('div');
+  title.textContent = 'Export Layout Script';
+  title.style.cssText = 'font-size:14px;font-weight:600;color:#e0e0e0;';
+
+  const subtitle = document.createElement('div');
+  subtitle.textContent = 'Choose script format:';
+  subtitle.style.cssText = 'font-size:12px;color:#7a8394;';
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px;';
+
+  const dismiss = () => overlay.remove();
+
+  const makeFormatBtn = (label: string, format: 'ps1' | 'bat' | 'sh', ext: string) => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.style.cssText = [
+      'flex:1', 'padding:10px 0', 'border-radius:6px',
+      'border:1px solid #3e4451', 'background:#252932',
+      'color:#abb2bf', 'font-size:13px', 'cursor:pointer',
+      'transition:background 0.15s,color 0.15s',
+    ].join(';');
+    btn.addEventListener('mouseenter', () => {
+      btn.style.background = '#2c313a';
+      btn.style.color = '#98c379';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = '#252932';
+      btn.style.color = '#abb2bf';
+    });
+    btn.addEventListener('click', () => {
+      dismiss();
+      triggerExportSave(format, ext);
+    });
+    return btn;
+  };
+
+  btnRow.appendChild(makeFormatBtn('PowerShell (.ps1)', 'ps1', '.ps1'));
+  btnRow.appendChild(makeFormatBtn('Batch (.bat)', 'bat', '.bat'));
+  btnRow.appendChild(makeFormatBtn('Shell (.sh)', 'sh', '.sh'));
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = [
+    'background:transparent', 'border:none', 'color:#5c6370',
+    'font-size:12px', 'cursor:pointer', 'align-self:center',
+  ].join(';');
+  cancelBtn.addEventListener('click', dismiss);
+
+  box.appendChild(title);
+  box.appendChild(subtitle);
+  box.appendChild(btnRow);
+  box.appendChild(cancelBtn);
+  overlay.appendChild(box);
+
+  // Clicking outside the box dismisses.
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) dismiss();
+  });
+
+  document.body.appendChild(overlay);
+}
+
+/**
+ * Opens the native OS save dialog, fetches the script from the daemon,
+ * and writes it to the chosen path.
+ */
+async function triggerExportSave(format: 'ps1' | 'bat' | 'sh', ext: string): Promise<void> {
+  try {
+    // Native OS save dialog — no Tauri "dangerous file type" prompt because
+    // we declare an explicit filters list and the plugin-dialog capability.
+    const filePath = await save({
+      title: 'Save Layout Script',
+      defaultPath: `kterm-layout${ext}`,
+      filters: format === 'ps1'
+        ? [{ name: 'PowerShell Script', extensions: ['ps1'] }]
+        : format === 'bat'
+        ? [{ name: 'Batch Script', extensions: ['bat'] }]
+        : [{ name: 'Shell Script', extensions: ['sh'] }],
+    });
+
+    if (!filePath) return; // user cancelled
+
+    // Fetch generated script text from the daemon.
+    const res = await fetch(
+      `${DAEMON_URL}/export?window=${encodeURIComponent(currentWindowId)}&format=${format}`
+    );
+    if (!res.ok) {
+      console.error('Export fetch failed:', await res.text());
+      return;
+    }
+    const scriptText = await res.text();
+
+    // Write to disk via Tauri fs plugin (no browser download, no security warning).
+    await writeTextFile(filePath, scriptText);
+
+    console.log(`[kterm] Layout script saved to: ${filePath}`);
+  } catch (err) {
+    console.error('[kterm] Export failed:', err);
+  }
+}

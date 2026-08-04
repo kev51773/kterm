@@ -109,3 +109,4 @@ pub enum LayoutNode {
 3. **`plans/PHASE_3_SPLITS_AND_UI.md`**: Target-based split engine (`/tabs/:id/split`), frontend split grid layout, split CLI commands (`--split-right`, `--split-down`, `--unsplit`, `--move-tab`).
 4. **`plans/PHASE_4_AUTOMATION_AND_EXPORTER.md`**: Ring-buffer output tracker, `--read-text`, `--wait-for`, script exporter engine (`--export-script`), badges, colors.
 5. **`plans/PHASE_5_SETTINGS_AND_POLISH.md`**: User `config.json` profile definitions, Settings UI modal, custom context menus, smart `Ctrl+C` copy, middle-click paste, shell padding, and extensible backlog.
+6. **`plans/PHASE_6_UI_TWEAKS.md`**: Combined title and tab bar (frameless window with `data-tauri-drag-region`), custom window controls, and Windows 11 snap layouts integration.
