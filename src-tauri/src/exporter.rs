@@ -365,7 +365,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     if !is_default {
                         out.push_str(&format!(
                             ":: Set title for %{var}%\n\
-                             \"%%KTERM%%\" --select-tab %{var}% --send-title {title}\n\n",
+                             \"%KTERM%\" --select-tab %{var}% --send-title {title}\n\n",
                             var = var,
                             title = tab.title,
                         ));
@@ -374,7 +374,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     if let Some(badge) = &tab.badge {
                         out.push_str(&format!(
                             ":: Set badge for %{var}%\n\
-                             \"%%KTERM%%\" --select-tab %{var}% --set-badge {badge}\n\n",
+                             \"%KTERM%\" --select-tab %{var}% --set-badge {badge}\n\n",
                             var = var,
                             badge = badge,
                         ));
@@ -383,7 +383,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                     if let Some(color) = &tab.color {
                         out.push_str(&format!(
                             ":: Set colour for %{var}%\n\
-                             \"%%KTERM%%\" --select-tab %{var}% --set-color {color}\n\n",
+                             \"%KTERM%\" --select-tab %{var}% --set-color {color}\n\n",
                             var = var,
                             color = color,
                         ));
@@ -401,38 +401,38 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                  ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --new-window`) DO SET NEW_WIN=%%I\n\
                  ::\n\
                  :: 2. Splitting panes:\n\
-                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-right --profile wsl`) DO SET PANE_R=%%I\n\
-                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-down --profile cmd`) DO SET PANE_D=%%I\n\
-                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-left --profile git-bash`) DO SET PANE_L=%%I\n\
-                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-up --profile powershell`) DO SET PANE_U=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %TAB_1% --split-right --profile wsl`) DO SET PANE_R=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %TAB_1% --split-down --profile cmd`) DO SET PANE_D=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %TAB_1% --split-left --profile git-bash`) DO SET PANE_L=%%I\n\
+                 ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %TAB_1% --split-up --profile powershell`) DO SET PANE_U=%%I\n\
                  ::\n\
                  :: 3. Sending text / commands to a tab or pane (unquoted):\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text git status\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text npm run dev\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --send-text git status\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --send-text npm run dev\n\
                  ::\n\
                  :: 4. Customizing tab titles (unquoted), badges, and colors:\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-title Server Logs\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-badge PROD\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-color #E53935\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --send-title Server Logs\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --set-badge PROD\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --set-color #E53935\n\
                  ::\n\
                  :: 5. Window title & focus:\n\
-                 ::    \"%%KTERM%%\" --window win-1 --set-window-title Main Workspace\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --focus\n\
+                 ::    \"%KTERM%\" --window win-1 --set-window-title Main Workspace\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --focus\n\
                  ::\n\
                  :: 6. Unsplitting / exploding layout:\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --unsplit\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --explode-split\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --unsplit\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --explode-split\n\
                  ::\n\
                  :: 7. Listing active windows & tabs:\n\
-                 ::    \"%%KTERM%%\" --list-windows\n\
-                 ::    \"%%KTERM%%\" --list-tabs --window win-1 --json\n\
+                 ::    \"%KTERM%\" --list-windows\n\
+                 ::    \"%KTERM%\" --list-tabs --window win-1 --json\n\
                  ::\n\
                  :: 8. Closing tabs & windows:\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --close --force\n\
-                 ::    \"%%KTERM%%\" --close-window win-1\n\
+                 ::    \"%KTERM%\" --select-tab %TAB_1% --close --force\n\
+                 ::    \"%KTERM%\" --close-window win-1\n\
                  ::\n\
                  :: 9. Exporting window layout to script:\n\
-                 ::    \"%%KTERM%%\" --window win-1 --export-script layout.bat --format bat\n\
+                 ::    \"%KTERM%\" --window win-1 --export-script layout.bat --format bat\n\
                  :: ============================================================\n",
             );
         }
