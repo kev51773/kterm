@@ -13,6 +13,10 @@ use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        cli::print_help();
+        std::process::exit(0);
+    }
 
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)

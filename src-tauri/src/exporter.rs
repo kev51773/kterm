@@ -249,17 +249,17 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                  #    $leftPane  = (& \"$KTERM\" --select-tab \"$tab1\" --split-left --profile git-bash).Trim()\n\
                  #    $upPane    = (& \"$KTERM\" --select-tab \"$tab1\" --split-up --profile powershell).Trim()\n\
                  #\n\
-                 # 3. Sending text / commands to a tab or pane:\n\
-                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-text \"git status`n\"\n\
-                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-text \"npm run dev`n\"\n\
+                 # 3. Sending text / commands to a tab or pane (unquoted):\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-text git status\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-text npm run dev\n\
                  #\n\
-                 # 4. Customizing tab titles, badges, and colors:\n\
-                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-title \"Server Logs\"\n\
-                 #    & \"$KTERM\" --select-tab \"$tab1\" --set-badge \"PROD\"\n\
-                 #    & \"$KTERM\" --select-tab \"$tab1\" --set-color \"#E53935\"\n\
+                 # 4. Customizing tab titles (unquoted), badges, and colors:\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --send-title Server Logs\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --set-badge PROD\n\
+                 #    & \"$KTERM\" --select-tab \"$tab1\" --set-color #E53935\n\
                  #\n\
                  # 5. Window title & focus:\n\
-                 #    & \"$KTERM\" --window win-1 --set-window-title \"Main Workspace\"\n\
+                 #    & \"$KTERM\" --window win-1 --set-window-title Main Workspace\n\
                  #    & \"$KTERM\" --select-tab \"$tab1\" --focus\n\
                  #\n\
                  # 6. Unsplitting / exploding layout:\n\
@@ -275,7 +275,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                  #    & \"$KTERM\" --close-window win-1\n\
                  #\n\
                  # 9. Exporting window layout to script:\n\
-                 #    & \"$KTERM\" --window win-1 --export-script \"layout.ps1\" --format ps1\n\
+                 #    & \"$KTERM\" --window win-1 --export-script layout.ps1 --format ps1\n\
                  # ============================================================\n",
             );
         }
@@ -406,17 +406,17 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                  ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-left --profile git-bash`) DO SET PANE_L=%%I\n\
                  ::    FOR /F \"usebackq tokens=*\" %%I IN (`\"%%KTERM%%\" --select-tab %%TAB_1%% --split-up --profile powershell`) DO SET PANE_U=%%I\n\
                  ::\n\
-                 :: 3. Sending text / commands to a tab or pane:\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text \"git status\\n\"\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text \"npm run dev\\n\"\n\
+                 :: 3. Sending text / commands to a tab or pane (unquoted):\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text git status\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-text npm run dev\n\
                  ::\n\
-                 :: 4. Customizing tab titles, badges, and colors:\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-title \"Server Logs\"\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-badge \"PROD\"\n\
-                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-color \"#E53935\"\n\
+                 :: 4. Customizing tab titles (unquoted), badges, and colors:\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --send-title Server Logs\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-badge PROD\n\
+                 ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --set-color #E53935\n\
                  ::\n\
                  :: 5. Window title & focus:\n\
-                 ::    \"%%KTERM%%\" --window win-1 --set-window-title \"Main Workspace\"\n\
+                 ::    \"%%KTERM%%\" --window win-1 --set-window-title Main Workspace\n\
                  ::    \"%%KTERM%%\" --select-tab %%TAB_1%% --focus\n\
                  ::\n\
                  :: 6. Unsplitting / exploding layout:\n\
@@ -432,7 +432,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                  ::    \"%%KTERM%%\" --close-window win-1\n\
                  ::\n\
                  :: 9. Exporting window layout to script:\n\
-                 ::    \"%%KTERM%%\" --window win-1 --export-script \"layout.bat\" --format bat\n\
+                 ::    \"%%KTERM%%\" --window win-1 --export-script layout.bat --format bat\n\
                  :: ============================================================\n",
             );
         }
@@ -564,17 +564,17 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                  #    pane_l=\"$(\"$KTERM\" --select-tab \"$tab1\" --split-left --profile git-bash)\"\n\
                  #    pane_u=\"$(\"$KTERM\" --select-tab \"$tab1\" --split-up --profile powershell)\"\n\
                  #\n\
-                 # 3. Sending text / commands to a tab or pane:\n\
-                 #    \"$KTERM\" --select-tab \"$tab1\" --send-text $'git status\\n'\n\
-                 #    \"$KTERM\" --select-tab \"$tab1\" --send-text $'npm run dev\\n'\n\
+                 # 3. Sending text / commands to a tab or pane (unquoted):\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --send-text git status\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --send-text npm run dev\n\
                  #\n\
-                 # 4. Customizing tab titles, badges, and colors:\n\
-                 #    \"$KTERM\" --select-tab \"$tab1\" --send-title \"Server Logs\"\n\
-                 #    \"$KTERM\" --select-tab \"$tab1\" --set-badge \"PROD\"\n\
-                 #    \"$KTERM\" --select-tab \"$tab1\" --set-color \"#E53935\"\n\
+                 # 4. Customizing tab titles (unquoted), badges, and colors:\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --send-title Server Logs\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --set-badge PROD\n\
+                 #    \"$KTERM\" --select-tab \"$tab1\" --set-color #E53935\n\
                  #\n\
                  # 5. Window title & focus:\n\
-                 #    \"$KTERM\" --window win-1 --set-window-title \"Main Workspace\"\n\
+                 #    \"$KTERM\" --window win-1 --set-window-title Main Workspace\n\
                  #    \"$KTERM\" --select-tab \"$tab1\" --focus\n\
                  #\n\
                  # 6. Unsplitting / exploding layout:\n\
@@ -590,7 +590,7 @@ pub fn export_layout(state: &AppState, window_id: &str, format: ExportFormat) ->
                  #    \"$KTERM\" --close-window win-1\n\
                  #\n\
                  # 9. Exporting window layout to script:\n\
-                 #    \"$KTERM\" --window win-1 --export-script \"layout.sh\" --format sh\n\
+                 #    \"$KTERM\" --window win-1 --export-script layout.sh --format sh\n\
                  # ============================================================\n",
             );
         }

@@ -6,7 +6,42 @@ use clap::Parser;
     author,
     version,
     about = "Scriptable Windows Terminal",
-    disable_help_flag = false
+    help_template = "{name} v{version}\n{about}\n\n{usage-heading} {usage}\n\n{all-args}\n{after-help}",
+    after_help = r#"EXAMPLES:
+  Spawn tab in current or target window:
+    kterm --profile powershell
+    kterm --profile cmd --window win-1
+    kterm --new-window
+
+  Split panes (returns new session ID):
+    kterm --select-tab tab1 --split-down --profile wsl
+    kterm --select-tab tab1 --split-right --profile git-bash
+    kterm --select-tab tab1 --split-left --profile powershell
+    kterm --select-tab tab1 --split-up --profile cmd
+
+  Send unquoted commands / text:
+    kterm --select-tab tab1 --send-text git status
+    kterm --select-tab tab1 --send-text npm run dev
+
+  Tab titles, badges, colors, & window title:
+    kterm --select-tab tab1 --send-title Server Logs
+    kterm --select-tab tab1 --set-badge PROD
+    kterm --select-tab tab1 --set-color #E53935
+    kterm --window win-1 --set-window-title Main Workspace
+
+  Layout management:
+    kterm --select-tab tab1 --unsplit
+    kterm --select-tab tab1 --explode-split
+    kterm --window win-1 --export-script layout.ps1 --format ps1
+    kterm --window win-1 --export-script layout.sh --format sh
+
+  Listing & queries:
+    kterm --list-windows
+    kterm --list-tabs --window win-1 --json
+
+  Closing tabs & windows:
+    kterm --select-tab tab1 --close --force
+    kterm --close-window win-1"#
 )]
 pub struct CliArgs {
     #[arg(short, long, help = "Terminal profile (powershell, cmd, wsl, git-bash)")]
@@ -109,5 +144,79 @@ pub struct CliArgs {
 
     #[arg(long, help = "Run in host daemon mode")]
     pub daemon: bool,
+}
+
+pub fn print_help() {
+    println!(
+        r#"kterm v0.1.0 — Scriptable Windows Terminal
+
+Usage: kterm.exe [OPTIONS]
+
+Options:
+  -p, --profile <PROFILE>             Terminal profile (powershell, cmd, wsl, git-bash)
+      --window <WINDOW>               Target window ID (e.g. win-1, win-2)
+      --new-window                    Force spawn in a new GUI window
+      --list-windows                  List all active GUI windows
+      --list-tabs                     List active tabs
+      --json                          Format output as JSON
+      --select-tab <SELECT_TAB>...    Select target tab by ID or Title
+      --send-text <SEND_TEXT>...      Send unquoted text/command to selected tab
+      --send-title <SEND_TITLE>...    Set unquoted title for selected tab
+      --set-window-title <TITLE>...   Set unquoted title for target window
+      --set-badge <SET_BADGE>         Set visual badge for selected tab
+      --set-color <SET_COLOR>         Set accent color for selected tab
+      --focus                         Bring target window/tab to front
+      --close                         Close selected tab
+      --close-window <CLOSE_WINDOW>   Close specified GUI window by ID
+      --force                         Force close without prompt
+      --split-right                   Split selected tab horizontally to the right
+      --split-left                    Split selected tab horizontally to the left
+      --split-down                    Split selected tab vertically downward
+      --split-up                      Split selected tab vertically upward
+      --move-tab <MOVE_TAB>           Move existing tab ID into split layout
+      --unsplit                       Detach split pane back to standalone tab
+      --explode-split                 Separate all panes in split layout into standalone tabs
+      --export-script <PATH>          Export current window layout to a script file
+      --format <FORMAT>               Script format: ps1 (default), bat, or sh [default: ps1]
+      --daemon                        Run in host daemon mode
+  -h, --help                          Print help
+  -V, --version                       Print version
+
+EXAMPLES:
+  Spawn tab in current or target window:
+    kterm --profile powershell
+    kterm --profile cmd --window win-1
+    kterm --new-window
+
+  Split panes (returns new session ID):
+    kterm --select-tab tab1 --split-down --profile wsl
+    kterm --select-tab tab1 --split-right --profile git-bash
+    kterm --select-tab tab1 --split-left --profile powershell
+    kterm --select-tab tab1 --split-up --profile cmd
+
+  Send unquoted commands / text:
+    kterm --select-tab tab1 --send-text git status
+    kterm --select-tab tab1 --send-text npm run dev
+
+  Tab titles, badges, colors, & window title:
+    kterm --select-tab tab1 --send-title Server Logs
+    kterm --select-tab tab1 --set-badge PROD
+    kterm --select-tab tab1 --set-color #E53935
+    kterm --window win-1 --set-window-title Main Workspace
+
+  Layout management:
+    kterm --select-tab tab1 --unsplit
+    kterm --select-tab tab1 --explode-split
+    kterm --window win-1 --export-script layout.ps1 --format ps1
+    kterm --window win-1 --export-script layout.sh --format sh
+
+  Listing & queries:
+    kterm --list-windows
+    kterm --list-tabs --window win-1 --json
+
+  Closing tabs & windows:
+    kterm --select-tab tab1 --close --force
+    kterm --close-window win-1"#
+    );
 }
 
