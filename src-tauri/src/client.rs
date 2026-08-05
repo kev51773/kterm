@@ -1,6 +1,5 @@
 use crate::cli::CliArgs;
 use serde_json::json;
-use std::io::Write;
 use std::time::Duration;
 
 pub fn is_daemon_running() -> bool {
@@ -175,6 +174,60 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
 
     let base_url = "http://127.0.0.1:9999";
 
+    if let Some(apply_path) = &args.apply {
+        let content = std::fs::read_to_string(apply_path)
+            .map_err(|e| format!("Failed to read YAML session file '{}': {}", apply_path, e))?;
+
+        let body = json!({
+            "yaml": content,
+            "suffix": args.suffix.clone(),
+            "suffix_auto": args.suffix_auto,
+            "dry_run": args.dry_run,
+            "window": args.window.clone(),
+        });
+
+        let res = client
+            .post(format!("{}/apply", base_url))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Failed to send apply request: {}", e))?;
+
+        if res.status().is_success() {
+            let val: serde_json::Value = res.json().map_err(|e| e.to_string())?;
+            if args.dry_run {
+                println!("YAML specification is valid.");
+            } else if let Some(win_id) = val["window_id"].as_str() {
+                safe_println(win_id);
+            } else {
+                safe_println(&serde_json::to_string_pretty(&val).unwrap());
+            }
+        } else {
+            return Err(res.text().unwrap_or_default());
+        }
+        return Ok(());
+    }
+
+    if let Some(out_path) = &args.export_layout {
+        let window = args.window.clone().unwrap_or_else(|| "win-1".to_string());
+        let url = format!("{}/export-layout?window={}", base_url, window);
+        let res = client
+            .get(&url)
+            .send()
+            .map_err(|e| format!("Failed to request export-layout: {}", e))?;
+        if !res.status().is_success() {
+            return Err(format!("Export layout failed: {}", res.text().unwrap_or_default()));
+        }
+        let yaml_text = res.text().map_err(|e| e.to_string())?;
+        std::fs::write(out_path, yaml_text)
+            .map_err(|e| format!("Failed to write layout to '{}': {}", out_path, e))?;
+        println!("Layout written to: {}", out_path);
+        match crate::exporter::export_shortcut_for_yaml(out_path) {
+            Ok(lnk) => println!("Shortcut written to: {}", lnk),
+            Err(e) => eprintln!("Warning: Failed to create shortcut: {}", e),
+        }
+        return Ok(());
+    }
+
     if args.new_window {
         let res = client
             .post(format!("{}/windows", base_url))
@@ -318,7 +371,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                         safe_println(&serde_json::to_string_pretty(&val).unwrap());
                     }
                 } else {
-                    return Err(format!("Split failed: {}", res.text().unwrap_or_default()));
+                    return Err(res.text().unwrap_or_default());
                 }
             }
             return Ok(());
@@ -332,7 +385,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                     .send()
                     .map_err(|e| format!("Failed to unsplit tab {}: {}", target, e))?;
                 if !res.status().is_success() {
-                    return Err(format!("Unsplit failed: {}", res.text().unwrap_or_default()));
+                    return Err(res.text().unwrap_or_default());
                 }
             }
             return Ok(());
@@ -345,7 +398,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                     .send()
                     .map_err(|e| format!("Failed to explode split for tab {}: {}", target, e))?;
                 if !res.status().is_success() {
-                    return Err(format!("Explode split failed: {}", res.text().unwrap_or_default()));
+                    return Err(res.text().unwrap_or_default());
                 }
             }
             return Ok(());
@@ -363,6 +416,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
             let body = json!({
                 "targets": targets,
                 "command": text,
+                "window": args.window.clone(),
             });
             let res = client
                 .post(format!("{}/tabs/send", base_url))
@@ -370,7 +424,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                 .send()
                 .map_err(|e| format!("Failed to send text: {}", e))?;
             if !res.status().is_success() {
-                return Err(format!("Send text failed: {}", res.text().unwrap_or_default()));
+                return Err(res.text().unwrap_or_default());
             }
         }
 
@@ -379,6 +433,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
             let body = json!({
                 "targets": targets,
                 "title": title,
+                "window": args.window.clone(),
             });
             let res = client
                 .post(format!("{}/tabs/title", base_url))
@@ -386,7 +441,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                 .send()
                 .map_err(|e| format!("Failed to set title: {}", e))?;
             if !res.status().is_success() {
-                return Err(format!("Set title failed: {}", res.text().unwrap_or_default()));
+                return Err(res.text().unwrap_or_default());
             }
         }
 
@@ -394,6 +449,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
             let body = json!({
                 "targets": targets,
                 "badge": badge,
+                "window": args.window.clone(),
             });
             let res = client
                 .post(format!("{}/tabs/badge", base_url))
@@ -401,7 +457,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                 .send()
                 .map_err(|e| format!("Failed to set badge: {}", e))?;
             if !res.status().is_success() {
-                return Err(format!("Set badge failed: {}", res.text().unwrap_or_default()));
+                return Err(res.text().unwrap_or_default());
             }
         }
 
@@ -409,6 +465,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
             let body = json!({
                 "targets": targets,
                 "color": color,
+                "window": args.window.clone(),
             });
             let res = client
                 .post(format!("{}/tabs/color", base_url))
@@ -416,13 +473,14 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                 .send()
                 .map_err(|e| format!("Failed to set color: {}", e))?;
             if !res.status().is_success() {
-                return Err(format!("Set color failed: {}", res.text().unwrap_or_default()));
+                return Err(res.text().unwrap_or_default());
             }
         }
 
         if args.focus {
             let body = json!({
                 "targets": targets,
+                "window": args.window.clone(),
             });
             let _ = client
                 .post(format!("{}/tabs/focus", base_url))
@@ -434,6 +492,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
             let body = json!({
                 "targets": targets,
                 "force": args.force,
+                "window": args.window.clone(),
             });
             let res = client
                 .post(format!("{}/tabs/close", base_url))
@@ -441,33 +500,10 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
                 .send()
                 .map_err(|e| format!("Failed to close tab: {}", e))?;
             if !res.status().is_success() {
-                return Err(format!("Close tab failed: {}", res.text().unwrap_or_default()));
+                return Err(res.text().unwrap_or_default());
             }
         }
 
-        return Ok(());
-    }
-
-
-
-    // Export current window layout to a script file
-    if let Some(out_path) = &args.export_script {
-        let window = args.window.clone().unwrap_or_else(|| "win-1".to_string());
-        let url = format!(
-            "{}/export?window={}&format={}",
-            base_url, window, args.format
-        );
-        let res = client
-            .get(&url)
-            .send()
-            .map_err(|e| format!("Failed to request export: {}", e))?;
-        if !res.status().is_success() {
-            return Err(format!("Export failed: {}", res.text().unwrap_or_default()));
-        }
-        let script = res.text().map_err(|e| e.to_string())?;
-        std::fs::write(out_path, script)
-            .map_err(|e| format!("Failed to write script to '{}': {}", out_path, e))?;
-        println!("Layout script written to: {}", out_path);
         return Ok(());
     }
 

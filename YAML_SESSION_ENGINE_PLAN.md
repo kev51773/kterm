@@ -113,12 +113,9 @@ pub struct YamlSplitSpec {
    - `--dry-run`: Validate YAML syntax, profile names, and window collisions without making changes or opening windows.
 
 2. **Removed CLI Flags:**
-   - Remove `--export-script` and `--format` flags completely.
+   - Remove `--export-script` and `--format` flags completely. Also remove all the related old script generation code.
 
-3. **Direct File Argument (`main.rs`):**
-   If `argv[1]` ends with `.yaml` or `.yml`, treat as `kterm --apply <FILE>`.
-
-4. **Updated `print_help()` (`cli.rs`):**
+3. **Updated `print_help()` (`cli.rs`):**
    Update help text with all new commands, options, and YAML usage examples.
 
 ---

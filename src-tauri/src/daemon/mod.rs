@@ -1,4 +1,4 @@
-use crate::exporter::{export_layout, ExportFormat};
+use crate::exporter::export_yaml_layout;
 use crate::pty::{LayoutNode, PtyManager, SplitDirection};
 use axum::{
     extract::{
@@ -53,12 +53,14 @@ pub struct CreateTabRequest {
 pub struct SendTextRequest {
     pub targets: Vec<String>,
     pub command: String,
+    pub window: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct SetTitleRequest {
     pub targets: Vec<String>,
     pub title: String,
+    pub window: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -71,12 +73,14 @@ pub struct SetWindowTitleRequest {
 pub struct SetBadgeRequest {
     pub targets: Vec<String>,
     pub badge: String,
+    pub window: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct SetColorRequest {
     pub targets: Vec<String>,
     pub color: String,
+    pub window: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -84,6 +88,18 @@ pub struct SetColorRequest {
 pub struct TargetTabRequest {
     pub targets: Vec<String>,
     pub force: Option<bool>,
+    pub window: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+pub struct ApplySessionRequest {
+    pub yaml: Option<String>,
+    pub file: Option<String>,
+    pub suffix: Option<String>,
+    pub suffix_auto: Option<bool>,
+    pub dry_run: Option<bool>,
+    pub window: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -154,7 +170,11 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/windows/title", post(set_window_title))
         .route("/windows/close", post(close_window))
         .route("/tabs/:id/ws", get(ws_handler))
-        .route("/export", get(export_script))
+        .route("/apply", post(apply_session))
+        .route("/export-layout", get(export_layout_endpoint))
+        .route("/export", get(export_layout_endpoint))
+        .route("/export-shortcut", post(export_shortcut_endpoint))
+        .route("/create-shortcut", post(export_shortcut_endpoint))
         .layer(cors)
         .with_state(state);
 
@@ -291,10 +311,10 @@ async fn send_text(
     State(state): State<AppState>,
     Json(req): Json<SendTextRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let sessions = state.pty_manager.resolve_tabs(&req.targets);
-    if sessions.is_empty() {
-        return Err((StatusCode::NOT_FOUND, "No matching tabs found".to_string()));
-    }
+    let sessions = state
+        .pty_manager
+        .resolve_tabs_strict(&req.targets, req.window.as_deref())
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
     let mut text_to_send = req.command;
     if !text_to_send.ends_with('\r') && !text_to_send.ends_with('\n') {
@@ -314,10 +334,10 @@ async fn set_title(
     State(state): State<AppState>,
     Json(req): Json<SetTitleRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let sessions = state.pty_manager.resolve_tabs(&req.targets);
-    if sessions.is_empty() {
-        return Err((StatusCode::NOT_FOUND, "No matching tabs found".to_string()));
-    }
+    let sessions = state
+        .pty_manager
+        .resolve_tabs_strict(&req.targets, req.window.as_deref())
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
     for session in sessions {
         *session.title.lock().unwrap() = req.title.clone();
@@ -376,10 +396,10 @@ async fn set_badge(
     State(state): State<AppState>,
     Json(req): Json<SetBadgeRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let sessions = state.pty_manager.resolve_tabs(&req.targets);
-    if sessions.is_empty() {
-        return Err((StatusCode::NOT_FOUND, "No matching tabs found".to_string()));
-    }
+    let sessions = state
+        .pty_manager
+        .resolve_tabs_strict(&req.targets, req.window.as_deref())
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
     for session in sessions {
         *session.badge.lock().unwrap() = Some(req.badge.clone());
@@ -392,10 +412,10 @@ async fn set_color(
     State(state): State<AppState>,
     Json(req): Json<SetColorRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let sessions = state.pty_manager.resolve_tabs(&req.targets);
-    if sessions.is_empty() {
-        return Err((StatusCode::NOT_FOUND, "No matching tabs found".to_string()));
-    }
+    let sessions = state
+        .pty_manager
+        .resolve_tabs_strict(&req.targets, req.window.as_deref())
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
     for session in sessions {
         *session.color.lock().unwrap() = Some(req.color.clone());
@@ -408,10 +428,10 @@ async fn close_tabs(
     State(state): State<AppState>,
     Json(req): Json<TargetTabRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let sessions = state.pty_manager.resolve_tabs(&req.targets);
-    if sessions.is_empty() {
-        return Err((StatusCode::NOT_FOUND, "No matching tabs found".to_string()));
-    }
+    let sessions = state
+        .pty_manager
+        .resolve_tabs_strict(&req.targets, req.window.as_deref())
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
     {
         let mut layouts = state.window_layouts.lock().unwrap();
@@ -528,9 +548,11 @@ async fn create_window(
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Path(id): Path<String>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    match state.pty_manager.get(&id) {
+    let win_param = query.get("window").map(|s| s.as_str());
+    match state.pty_manager.get_in_window(&id, win_param) {
         Some(sess) => ws.on_upgrade(move |socket| handle_websocket(socket, sess)),
         None => (StatusCode::NOT_FOUND, "Tab not found").into_response(),
     }
@@ -793,11 +815,60 @@ async fn get_window_layout(
     Json(win_layouts.clone())
 }
 
-/// GET /export?window=win-1&format=ps1
-///
-/// Returns the generated layout script as plain text. The frontend is
-/// responsible for presenting the save dialog and writing the file.
-async fn export_script(
+async fn apply_session(
+    State(state): State<AppState>,
+    Json(req): Json<ApplySessionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let content = if let Some(y) = req.yaml {
+        y
+    } else if let Some(f) = req.file {
+        std::fs::read_to_string(&f)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read YAML file '{}': {}", f, e)))?
+    } else {
+        return Err((StatusCode::BAD_REQUEST, "No YAML content or file provided".to_string()));
+    };
+
+    let spec = crate::yaml::parse_yaml(&content)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    let is_dry_run = req.dry_run.unwrap_or(false);
+    let is_suffix_auto = req.suffix_auto.unwrap_or(false);
+
+    let win_override = req.window.as_deref();
+    let target_base_id = win_override.filter(|w| !w.trim().is_empty()).unwrap_or(&spec.window.id);
+
+    if is_dry_run {
+        crate::yaml::validate_yaml(&spec).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+        let window_id = crate::yaml::resolve_window_id(&state, target_base_id, req.suffix.as_deref(), is_suffix_auto);
+        {
+            let titles = state.window_titles.lock().unwrap();
+            let layouts = state.window_layouts.lock().unwrap();
+            let exists = titles.contains_key(&window_id) || layouts.contains_key(&window_id);
+            if exists {
+                if !crate::yaml::is_window_untouched_initial(&state, &window_id) {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        format!("Window '{}' already exists.", window_id),
+                    ));
+                }
+            }
+        }
+        return Ok(Json(serde_json::json!({
+            "status": "valid",
+            "window_id": window_id
+        })));
+    }
+
+    let win_id = crate::yaml::apply_yaml_spec(&state, &spec, win_override, req.suffix.as_deref(), is_suffix_auto)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    Ok(Json(serde_json::json!({
+        "status": "ok",
+        "window_id": win_id
+    })))
+}
+
+async fn export_layout_endpoint(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
@@ -805,14 +876,34 @@ async fn export_script(
         .get("window")
         .cloned()
         .unwrap_or_else(|| "win-1".to_string());
-    let format_str = params.get("format").map(|s| s.as_str()).unwrap_or("ps1");
-    let format = ExportFormat::from_str(format_str);
-    let script = export_layout(&state, &window_id, format);
+    let yaml_str = export_yaml_layout(&state, &window_id);
     (
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        script,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        yaml_str,
     )
 }
+
+#[derive(serde::Deserialize)]
+struct ExportShortcutReq {
+    path: String,
+}
+
+async fn export_shortcut_endpoint(
+    Json(payload): Json<ExportShortcutReq>,
+) -> impl IntoResponse {
+    match crate::exporter::export_shortcut_for_yaml(&payload.path) {
+        Ok(shortcut_path) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "ok", "shortcut": shortcut_path })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        ),
+    }
+}
+
+
 
 

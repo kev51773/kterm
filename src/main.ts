@@ -43,6 +43,49 @@ let currentLayouts: LayoutNode[] = [];
 const tabsListEl = document.getElementById('tabs-list') as HTMLElement;
 const terminalContainerEl = document.getElementById('terminal-container') as HTMLElement;
 const addTabBtn = document.getElementById('add-tab-btn') as HTMLButtonElement;
+const tabDropdownBtn = document.getElementById('tab-dropdown-btn') as HTMLButtonElement;
+
+const PROFILES = [
+  { id: 'powershell', label: 'PowerShell' },
+  { id: 'cmd', label: 'Command Prompt' },
+  { id: 'wsl', label: 'WSL' },
+  { id: 'git-bash', label: 'Git Bash' },
+];
+
+async function spawnTabWithProfile(profile: string = 'powershell') {
+  try {
+    const res = await fetch(`${DAEMON_URL}/tabs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile, window: currentWindowId }),
+    });
+    if (res.ok) {
+      const tabData: TabData = await res.json();
+      await syncTabs();
+      switchTab(tabData.id);
+    }
+  } catch (e) {
+    console.error(`Failed to create new tab with profile ${profile}`, e);
+  }
+}
+
+// Profile Dropdown Menu Element
+const profileDropdownEl = document.createElement('div');
+profileDropdownEl.className = 'profile-dropdown-menu';
+profileDropdownEl.style.display = 'none';
+
+PROFILES.forEach(({ id, label }) => {
+  const item = document.createElement('div');
+  item.className = 'profile-dropdown-item';
+  item.textContent = label;
+  item.addEventListener('click', (e) => {
+    e.stopPropagation();
+    profileDropdownEl.style.display = 'none';
+    spawnTabWithProfile(id);
+  });
+  profileDropdownEl.appendChild(item);
+});
+document.body.appendChild(profileDropdownEl);
 
 // Context Menu Element
 const contextMenuEl = document.createElement('div');
@@ -52,24 +95,28 @@ document.body.appendChild(contextMenuEl);
 
 window.addEventListener('click', () => {
   contextMenuEl.style.display = 'none';
+  profileDropdownEl.style.display = 'none';
 });
 
-addTabBtn.addEventListener('click', async () => {
-  try {
-    const res = await fetch(`${DAEMON_URL}/tabs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile: 'powershell', window: currentWindowId }),
-    });
-    if (res.ok) {
-      const tabData: TabData = await res.json();
-      await syncTabs();
-      switchTab(tabData.id);
-    }
-  } catch (e) {
-    console.error('Failed to create new tab', e);
-  }
+addTabBtn.addEventListener('click', () => {
+  spawnTabWithProfile('powershell');
 });
+
+if (tabDropdownBtn) {
+  tabDropdownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    contextMenuEl.style.display = 'none';
+    const isVisible = profileDropdownEl.style.display === 'block';
+    if (isVisible) {
+      profileDropdownEl.style.display = 'none';
+    } else {
+      const rect = tabDropdownBtn.getBoundingClientRect();
+      profileDropdownEl.style.top = `${rect.bottom + 4}px`;
+      profileDropdownEl.style.left = `${rect.left}px`;
+      profileDropdownEl.style.display = 'block';
+    }
+  });
+}
 
 async function syncTabs() {
   try {
@@ -260,7 +307,7 @@ function updateTabLocal(tabData: TabData) {
 }
 
 function connectWebSocket(instance: TabInstance) {
-  const wsUrl = `${WS_URL}/tabs/${instance.id}/ws`;
+  const wsUrl = `${WS_URL}/tabs/${instance.id}/ws?window=${encodeURIComponent(currentWindowId)}`;
   const ws = new WebSocket(wsUrl);
   instance.ws = ws;
 
@@ -621,131 +668,46 @@ setInterval(syncTabs, 2000);
 
 const exportBtn = document.getElementById('export-script-btn') as HTMLButtonElement;
 exportBtn.addEventListener('click', () => {
-  showExportFormatPicker();
+  triggerExportSave();
 });
 
-/**
- * Shows an inline modal letting the user choose between PS1 and BAT,
- * then triggers the native save dialog and writes the generated script.
- */
-function showExportFormatPicker(): void {
-  // Remove any stale picker.
-  document.getElementById('export-format-modal')?.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'export-format-modal';
-  overlay.style.cssText = [
-    'position:fixed', 'inset:0', 'z-index:10000',
-    'display:flex', 'align-items:center', 'justify-content:center',
-    'background:rgba(0,0,0,0.55)', 'backdrop-filter:blur(2px)',
-  ].join(';');
-
-  const box = document.createElement('div');
-  box.style.cssText = [
-    'background:#1e2128', 'border:1px solid #3e4451',
-    'border-radius:10px', 'padding:24px 28px',
-    'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
-    'display:flex', 'flex-direction:column', 'gap:16px',
-    'min-width:260px',
-  ].join(';');
-
-  const title = document.createElement('div');
-  title.textContent = 'Export Layout Script';
-  title.style.cssText = 'font-size:14px;font-weight:600;color:#e0e0e0;';
-
-  const subtitle = document.createElement('div');
-  subtitle.textContent = 'Choose script format:';
-  subtitle.style.cssText = 'font-size:12px;color:#7a8394;';
-
-  const btnRow = document.createElement('div');
-  btnRow.style.cssText = 'display:flex;gap:10px;';
-
-  const dismiss = () => overlay.remove();
-
-  const makeFormatBtn = (label: string, format: 'ps1' | 'bat' | 'sh', ext: string) => {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.style.cssText = [
-      'flex:1', 'padding:10px 0', 'border-radius:6px',
-      'border:1px solid #3e4451', 'background:#252932',
-      'color:#abb2bf', 'font-size:13px', 'cursor:pointer',
-      'transition:background 0.15s,color 0.15s',
-    ].join(';');
-    btn.addEventListener('mouseenter', () => {
-      btn.style.background = '#2c313a';
-      btn.style.color = '#98c379';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = '#252932';
-      btn.style.color = '#abb2bf';
-    });
-    btn.addEventListener('click', () => {
-      dismiss();
-      triggerExportSave(format, ext);
-    });
-    return btn;
-  };
-
-  btnRow.appendChild(makeFormatBtn('PowerShell (.ps1)', 'ps1', '.ps1'));
-  btnRow.appendChild(makeFormatBtn('Batch (.bat)', 'bat', '.bat'));
-  btnRow.appendChild(makeFormatBtn('Shell (.sh)', 'sh', '.sh'));
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.style.cssText = [
-    'background:transparent', 'border:none', 'color:#5c6370',
-    'font-size:12px', 'cursor:pointer', 'align-self:center',
-  ].join(';');
-  cancelBtn.addEventListener('click', dismiss);
-
-  box.appendChild(title);
-  box.appendChild(subtitle);
-  box.appendChild(btnRow);
-  box.appendChild(cancelBtn);
-  overlay.appendChild(box);
-
-  // Clicking outside the box dismisses.
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) dismiss();
-  });
-
-  document.body.appendChild(overlay);
-}
-
-/**
- * Opens the native OS save dialog, fetches the script from the daemon,
- * and writes it to the chosen path.
- */
-async function triggerExportSave(format: 'ps1' | 'bat' | 'sh', ext: string): Promise<void> {
+async function triggerExportSave(): Promise<void> {
   try {
-    // Native OS save dialog — no Tauri "dangerous file type" prompt because
-    // we declare an explicit filters list and the plugin-dialog capability.
     const filePath = await save({
-      title: 'Save Layout Script',
-      defaultPath: `kterm-layout${ext}`,
-      filters: format === 'ps1'
-        ? [{ name: 'PowerShell Script', extensions: ['ps1'] }]
-        : format === 'bat'
-        ? [{ name: 'Batch Script', extensions: ['bat'] }]
-        : [{ name: 'Shell Script', extensions: ['sh'] }],
+      title: 'Save YAML Layout',
+      defaultPath: 'kterm-layout.yaml',
+      filters: [{ name: 'YAML Session File', extensions: ['yaml', 'yml'] }],
     });
 
-    if (!filePath) return; // user cancelled
+    if (!filePath) return;
 
-    // Fetch generated script text from the daemon.
     const res = await fetch(
-      `${DAEMON_URL}/export?window=${encodeURIComponent(currentWindowId)}&format=${format}`
+      `${DAEMON_URL}/export-layout?window=${encodeURIComponent(currentWindowId)}`
     );
     if (!res.ok) {
       console.error('Export fetch failed:', await res.text());
       return;
     }
-    const scriptText = await res.text();
+    const yamlText = await res.text();
 
-    // Write to disk via Tauri fs plugin (no browser download, no security warning).
-    await writeTextFile(filePath, scriptText);
+    await writeTextFile(filePath, yamlText);
+    console.log(`[kterm] YAML Layout saved to: ${filePath}`);
 
-    console.log(`[kterm] Layout script saved to: ${filePath}`);
+    try {
+      const scRes = await fetch(`${DAEMON_URL}/export-shortcut`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath }),
+      });
+      if (scRes.ok) {
+        const scData = await scRes.json();
+        console.log(`[kterm] Shortcut saved to: ${scData.shortcut}`);
+      } else {
+        console.error('[kterm] Shortcut creation failed:', await scRes.text());
+      }
+    } catch (scErr) {
+      console.error('[kterm] Shortcut creation request error:', scErr);
+    }
   } catch (err) {
     console.error('[kterm] Export failed:', err);
   }

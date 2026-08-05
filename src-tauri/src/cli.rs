@@ -8,6 +8,13 @@ use clap::Parser;
     about = "Scriptable Windows Terminal",
     help_template = "{name} v{version}\n{about}\n\n{usage-heading} {usage}\n\n{all-args}\n{after-help}",
     after_help = r#"EXAMPLES:
+  Declarative YAML session engine:
+    kterm --apply dev-session.yaml
+    kterm dev-session.yaml --suffix -backend
+    kterm dev-session.yaml --suffix-auto
+    kterm dev-session.yaml --dry-run
+    kterm --export-layout layout.yaml
+
   Spawn tab in current or target window:
     kterm --profile powershell
     kterm --profile cmd --window win-1
@@ -32,8 +39,6 @@ use clap::Parser;
   Layout management:
     kterm --select-tab tab1 --unsplit
     kterm --select-tab tab1 --explode-split
-    kterm --window win-1 --export-script layout.ps1 --format ps1
-    kterm --window win-1 --export-script layout.sh --format sh
 
   Listing & queries:
     kterm --list-windows
@@ -126,7 +131,6 @@ pub struct CliArgs {
     #[arg(long, help = "Split selected tab vertically upward")]
     pub split_up: bool,
 
-
     #[arg(long, help = "Move existing tab ID into split layout")]
     pub move_tab: Option<String>,
 
@@ -136,11 +140,20 @@ pub struct CliArgs {
     #[arg(long, help = "Separate all panes in split layout into standalone tabs")]
     pub explode_split: bool,
 
-    #[arg(long, help = "Export current window layout to a script file (path to write)")]
-    pub export_script: Option<String>,
+    #[arg(long, help = "Path to YAML session file to load and apply")]
+    pub apply: Option<String>,
 
-    #[arg(long, default_value = "ps1", help = "Script format: ps1 (default), bat, or sh")]
-    pub format: String,
+    #[arg(long, help = "Export current window layout to specified .yaml file")]
+    pub export_layout: Option<String>,
+
+    #[arg(long, help = "Append static text to window.id")]
+    pub suffix: Option<String>,
+
+    #[arg(long, help = "Automatically append first unused numeric suffix (-1, -2, -3)")]
+    pub suffix_auto: bool,
+
+    #[arg(long, help = "Validate YAML syntax without opening windows or modifying state")]
+    pub dry_run: bool,
 
     #[arg(long, help = "Run in host daemon mode")]
     pub daemon: bool,
@@ -153,6 +166,11 @@ pub fn print_help() {
 Usage: kterm.exe [OPTIONS]
 
 Options:
+      --apply <FILE>                  Path to YAML session file to load and apply
+      --export-layout <FILE>          Export current window layout to specified .yaml file
+      --suffix <TEXT>                 Append static text to window.id
+      --suffix-auto                   Automatically append first unused numeric suffix (-1, -2, -3)
+      --dry-run                       Validate YAML syntax without making changes
   -p, --profile <PROFILE>             Terminal profile (powershell, cmd, wsl, git-bash)
       --window <WINDOW>               Target window ID (e.g. win-1, win-2)
       --new-window                    Force spawn in a new GUI window
@@ -176,23 +194,26 @@ Options:
       --move-tab <MOVE_TAB>           Move existing tab ID into split layout
       --unsplit                       Detach split pane back to standalone tab
       --explode-split                 Separate all panes in split layout into standalone tabs
-      --export-script <PATH>          Export current window layout to a script file
-      --format <FORMAT>               Script format: ps1 (default), bat, or sh [default: ps1]
       --daemon                        Run in host daemon mode
   -h, --help                          Print help
   -V, --version                       Print version
 
 EXAMPLES:
+  Declarative YAML session engine:
+    kterm --apply dev-session.yaml
+    kterm dev-session.yaml --suffix -backend
+    kterm dev-session.yaml --suffix-auto
+    kterm dev-session.yaml --dry-run
+    kterm --export-layout layout.yaml
+
   Spawn tab in current or target window:
     kterm --profile powershell
     kterm --profile cmd --window win-1
     kterm --new-window
 
-  Split panes (returns new session ID):
+  Split panes:
     kterm --select-tab tab1 --split-down --profile wsl
     kterm --select-tab tab1 --split-right --profile git-bash
-    kterm --select-tab tab1 --split-left --profile powershell
-    kterm --select-tab tab1 --split-up --profile cmd
 
   Send unquoted commands / text:
     kterm --select-tab tab1 --send-text git status
@@ -202,21 +223,6 @@ EXAMPLES:
     kterm --select-tab tab1 --send-title Server Logs
     kterm --select-tab tab1 --set-badge PROD
     kterm --select-tab tab1 --set-color #E53935
-    kterm --window win-1 --set-window-title Main Workspace
-
-  Layout management:
-    kterm --select-tab tab1 --unsplit
-    kterm --select-tab tab1 --explode-split
-    kterm --window win-1 --export-script layout.ps1 --format ps1
-    kterm --window win-1 --export-script layout.sh --format sh
-
-  Listing & queries:
-    kterm --list-windows
-    kterm --list-tabs --window win-1 --json
-
-  Closing tabs & windows:
-    kterm --select-tab tab1 --close --force
-    kterm --close-window win-1"#
+    kterm --window win-1 --set-window-title Main Workspace"#
     );
 }
-

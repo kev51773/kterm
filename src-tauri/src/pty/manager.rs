@@ -96,6 +96,16 @@ impl PtyManager {
         profile: String,
         window_id: String,
     ) -> Result<Arc<PtySession>, String> {
+        self.spawn_with_cwd(id, profile, window_id, None)
+    }
+
+    pub fn spawn_with_cwd(
+        &self,
+        id: String,
+        profile: String,
+        window_id: String,
+        cwd: Option<&str>,
+    ) -> Result<Arc<PtySession>, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -106,7 +116,7 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let cmd = match profile.to_lowercase().as_str() {
+        let mut cmd = match profile.to_lowercase().as_str() {
             "cmd" => CommandBuilder::new("cmd.exe"),
             "wsl" => CommandBuilder::new("wsl.exe"),
             "git-bash" | "bash" => {
@@ -116,6 +126,12 @@ impl PtyManager {
             }
             _ => CommandBuilder::new("powershell.exe"),
         };
+
+        if let Some(dir) = cwd {
+            if !dir.trim().is_empty() {
+                cmd.cwd(dir);
+            }
+        }
 
         let child = pair
             .slave
@@ -206,7 +222,7 @@ impl PtyManager {
             id: id.clone(),
             pid,
             profile,
-            window_id,
+            window_id: window_id.clone(),
             title: Arc::new(Mutex::new(default_title)),
             badge: Arc::new(Mutex::new(None)),
             color: Arc::new(Mutex::new(None)),
@@ -220,12 +236,30 @@ impl PtyManager {
 
         session.resize(30, 100);
 
-        self.sessions.lock().unwrap().insert(id, session.clone());
+        let map_key = format!("{}:{}", window_id, id);
+        self.sessions.lock().unwrap().insert(map_key, session.clone());
         Ok(session)
     }
 
     pub fn get(&self, id: &str) -> Option<Arc<PtySession>> {
-        self.sessions.lock().unwrap().get(id).cloned()
+        self.get_in_window(id, None)
+    }
+
+    pub fn get_in_window(&self, id: &str, window_id: Option<&str>) -> Option<Arc<PtySession>> {
+        let lock = self.sessions.lock().unwrap();
+        if let Some(w) = window_id {
+            if !w.is_empty() {
+                let map_key = format!("{}:{}", w, id);
+                if let Some(s) = lock.get(&map_key) {
+                    return Some(s.clone());
+                }
+                return lock.values().find(|s| s.id == id && s.window_id == w).cloned();
+            }
+        }
+        if let Some(s) = lock.get(id) {
+            return Some(s.clone());
+        }
+        lock.values().find(|s| s.id == id).cloned()
     }
 
     #[allow(dead_code)]
@@ -258,19 +292,24 @@ impl PtyManager {
 
     pub fn close(&self, id: &str) -> bool {
         let mut lock = self.sessions.lock().unwrap();
-        if let Some(session) = lock.remove(id) {
-            // Try to take the child handle. If the waiter already took it (None),
-            // kill by PID instead — this unblocks the waiter's .wait() call.
-            let child_opt = session._child.lock().unwrap().take();
-            if let Some(mut child) = child_opt {
-                let _ = child.kill();
-            } else {
-                session.kill_by_pid();
-            }
-            true
+        let target_key = if lock.contains_key(id) {
+            Some(id.to_string())
         } else {
-            false
+            lock.iter().find(|(_, s)| s.id == id).map(|(k, _)| k.clone())
+        };
+
+        if let Some(key) = target_key {
+            if let Some(session) = lock.remove(&key) {
+                let child_opt = session._child.lock().unwrap().take();
+                if let Some(mut child) = child_opt {
+                    let _ = child.kill();
+                } else {
+                    session.kill_by_pid();
+                }
+                return true;
+            }
         }
+        false
     }
 
     pub fn resolve_tabs(&self, targets: &[String]) -> Vec<Arc<PtySession>> {
@@ -300,5 +339,77 @@ impl PtyManager {
             }
         }
         result
+    }
+
+    pub fn resolve_tabs_strict(
+        &self,
+        targets: &[String],
+        window_filter: Option<&str>,
+    ) -> Result<Vec<Arc<PtySession>>, String> {
+        let lock = self.sessions.lock().unwrap();
+        let mut result = Vec::new();
+
+        let has_active = targets.is_empty() || targets.iter().any(|t| t == "active" || t.is_empty());
+        if has_active {
+            if let Some(w) = window_filter {
+                if let Some(first) = lock.values().find(|s| s.window_id == w) {
+                    result.push(first.clone());
+                    return Ok(result);
+                }
+            } else if let Some(first) = lock.values().next() {
+                result.push(first.clone());
+                return Ok(result);
+            }
+            return Err("Tab 'active' not found.".to_string());
+        }
+
+        for target in targets {
+            let id_matches: Vec<_> = lock.values().filter(|s| &s.id == target).cloned().collect();
+            let title_matches: Vec<_> = if id_matches.is_empty() {
+                lock.values()
+                    .filter(|s| s.title.lock().unwrap().eq_ignore_ascii_case(target))
+                    .cloned()
+                    .collect()
+            } else {
+                vec![]
+            };
+
+            let matches: Vec<_> = if !id_matches.is_empty() {
+                id_matches
+            } else {
+                title_matches
+            };
+
+            if matches.is_empty() {
+                return Err(format!("Tab '{}' not found.", target));
+            }
+
+            if let Some(w) = window_filter {
+                let filtered: Vec<_> = matches.into_iter().filter(|s| s.window_id == w).collect();
+                if filtered.is_empty() {
+                    return Err(format!("Tab '{}' not found in window '{}'.", target, w));
+                }
+                result.extend(filtered);
+            } else {
+                let mut unique_windows: Vec<String> = matches.iter().map(|s| s.window_id.clone()).collect();
+                unique_windows.sort();
+                unique_windows.dedup();
+
+                if unique_windows.len() > 1 {
+                    let win_list = unique_windows
+                        .iter()
+                        .map(|w| format!("'{}'", w))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(format!(
+                        "Ambiguous tab '{}' found in windows {}. Specify --window <win_id>.",
+                        target, win_list
+                    ));
+                }
+                result.extend(matches);
+            }
+        }
+
+        Ok(result)
     }
 }

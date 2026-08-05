@@ -3,6 +3,7 @@ mod client;
 mod daemon;
 mod exporter;
 mod pty;
+mod yaml;
 
 use clap::Parser;
 use cli::CliArgs;
@@ -22,7 +23,22 @@ fn main() {
         .with_writer(std::io::stderr)
         .init();
 
-    let args = CliArgs::parse();
+    let raw_args: Vec<String> = std::env::args().collect();
+    let mut modified_args = raw_args.clone();
+
+    if raw_args.len() > 1 && !raw_args.iter().any(|a| a == "--apply" || a == "--export-layout") {
+        for (idx, arg) in raw_args.iter().enumerate().skip(1) {
+            if !arg.starts_with('-') && (arg.ends_with(".yaml") || arg.ends_with(".yml")) {
+                let prev_arg = raw_args.get(idx - 1).map(|s| s.as_str());
+                if prev_arg != Some("--export-layout") && prev_arg != Some("--apply") {
+                    modified_args.insert(idx, "--apply".to_string());
+                    break;
+                }
+            }
+        }
+    }
+
+    let args = CliArgs::parse_from(modified_args);
 
     if args.daemon {
         run_host_daemon(args);
