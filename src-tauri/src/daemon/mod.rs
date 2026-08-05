@@ -166,6 +166,8 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/tabs/:id/split", post(split_tab))
         .route("/tabs/:id/unsplit", post(unsplit_tab))
         .route("/tabs/:id/explode", post(explode_tab))
+        .route("/tabs/:id/read", get(read_tab_buffer))
+        .route("/tabs/:id/wait", post(wait_tab_output))
         .route("/windows", get(list_windows).post(create_window))
         .route("/windows/title", post(set_window_title))
         .route("/windows/close", post(close_window))
@@ -903,6 +905,129 @@ async fn export_shortcut_endpoint(
         ),
     }
 }
+
+#[derive(serde::Deserialize)]
+struct ReadTabQuery {
+    tail: Option<usize>,
+    raw: Option<bool>,
+}
+
+async fn read_tab_buffer(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(params): Query<ReadTabQuery>,
+) -> impl IntoResponse {
+    let session = match state.pty_manager.get(&id) {
+        Some(s) => s,
+        None => return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Tab not found" }))),
+    };
+
+    let tail = params.tail.unwrap_or(50);
+    let raw = params.raw.unwrap_or(false);
+
+    let lines = session.ring_buffer.read_tail_lines(tail, !raw);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "tab_id": id,
+            "tail": tail,
+            "lines": lines
+        })),
+    )
+}
+
+#[derive(serde::Deserialize)]
+struct WaitTabReq {
+    pattern: Option<String>,
+    is_prompt: Option<bool>,
+    from_history: Option<bool>,
+    timeout_sec: Option<u64>,
+}
+
+async fn wait_tab_output(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<WaitTabReq>,
+) -> impl IntoResponse {
+    let session = match state.pty_manager.get(&id) {
+        Some(s) => s,
+        None => return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Tab not found" }))),
+    };
+
+    let timeout_sec = payload.timeout_sec.unwrap_or(30);
+    let is_prompt = payload.is_prompt.unwrap_or(false);
+    let pattern = payload.pattern.unwrap_or_default();
+    let from_history = payload.from_history.unwrap_or(false);
+
+    let start_offset = if from_history {
+        0
+    } else {
+        session.ring_buffer.get_total_bytes_written()
+    };
+
+    let check_matched = |session: &crate::pty::PtySession| -> bool {
+        if is_prompt {
+            session.ring_buffer.matches_prompt()
+        } else if !pattern.is_empty() {
+            session.ring_buffer.contains_pattern_from_offset(start_offset, &pattern)
+        } else {
+            true
+        }
+    };
+
+    if check_matched(&session) {
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "ok", "matched": true, "elapsed_sec": 0.0 })),
+        );
+    }
+
+    let mut rx = session.tx.subscribe();
+    let start_time = std::time::Instant::now();
+    let timeout_duration = std::time::Duration::from_secs(timeout_sec);
+
+    let wait_result = tokio::time::timeout(timeout_duration, async {
+        loop {
+            match rx.recv().await {
+                Ok(_) => {
+                    if check_matched(&session) {
+                        return Ok(true);
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => return Ok(false),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    if check_matched(&session) {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }).await;
+
+    match wait_result {
+        Ok(Ok(true)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ok",
+                "matched": true,
+                "elapsed_sec": start_time.elapsed().as_secs_f32()
+            })),
+        ),
+        Ok(Ok(false)) => (
+            StatusCode::GONE,
+            Json(serde_json::json!({ "error": "PTY output stream closed" })),
+        ),
+        Ok(Err(())) => unreachable!(),
+        Err(_) => (
+            StatusCode::REQUEST_TIMEOUT,
+            Json(serde_json::json!({
+                "error": "Wait timeout elapsed",
+                "timeout_sec": timeout_sec
+            })),
+        ),
+    }
+}
+
 
 
 

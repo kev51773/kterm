@@ -168,7 +168,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
 
     let client = reqwest::blocking::Client::builder()
         .no_proxy()
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -410,8 +410,10 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
     // Action on selected tabs
     if !args.select_tab.is_empty() {
         let targets = &args.select_tab;
+        let mut ran_action = false;
 
         if let Some(text_vec) = &args.send_text {
+            ran_action = true;
             let text = text_vec.join(" ");
             let body = json!({
                 "targets": targets,
@@ -429,6 +431,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
         }
 
         if let Some(title_vec) = &args.send_title {
+            ran_action = true;
             let title = title_vec.join(" ");
             let body = json!({
                 "targets": targets,
@@ -446,6 +449,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
         }
 
         if let Some(badge) = &args.set_badge {
+            ran_action = true;
             let body = json!({
                 "targets": targets,
                 "badge": badge,
@@ -462,6 +466,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
         }
 
         if let Some(color) = &args.set_color {
+            ran_action = true;
             let body = json!({
                 "targets": targets,
                 "color": color,
@@ -478,6 +483,7 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
         }
 
         if args.focus {
+            ran_action = true;
             let body = json!({
                 "targets": targets,
                 "window": args.window.clone(),
@@ -502,8 +508,84 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
             if !res.status().is_success() {
                 return Err(res.text().unwrap_or_default());
             }
+            return Ok(());
         }
 
+        let is_read = args.read_text.is_some() || args.tail.is_some() || args.raw;
+        let is_wait = args.wait_for.is_some() || args.wait_for_prompt;
+
+        if ran_action && !is_read && !is_wait {
+            return Ok(());
+        }
+    }
+
+    if args.read_text.is_some() || args.tail.is_some() || args.raw {
+        let target_tab = match &args.read_text {
+            Some(Some(t)) => t.clone(),
+            _ => args.select_tab.first().cloned().unwrap_or_else(|| "tab-101".to_string()),
+        };
+
+        let tail = args.tail.unwrap_or(50);
+        let raw = args.raw;
+        let url = format!("{}/tabs/{}/read?tail={}&raw={}", base_url, target_tab, tail, raw);
+        let res = client
+            .get(&url)
+            .send()
+            .map_err(|e| format!("Failed to read tab text: {}", e))?;
+
+        if !res.status().is_success() {
+            return Err(format!("Read tab text failed: {}", res.text().unwrap_or_default()));
+        }
+
+        let val: serde_json::Value = res.json().map_err(|e| e.to_string())?;
+        if let Some(lines) = val["lines"].as_array() {
+            for line in lines {
+                if let Some(l) = line.as_str() {
+                    safe_println(l);
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if args.wait_for.is_some() || args.wait_for_prompt {
+        let target_tab = args
+            .select_tab
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "tab-101".to_string());
+
+        let timeout_sec = args.timeout.unwrap_or(30);
+        let body = json!({
+            "pattern": args.wait_for,
+            "is_prompt": args.wait_for_prompt,
+            "from_history": args.from_history,
+            "timeout_sec": timeout_sec,
+        });
+
+        let wait_client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(timeout_sec + 10))
+            .build()
+            .unwrap_or_else(|_| client.clone());
+
+        let url = format!("{}/tabs/{}/wait", base_url, target_tab);
+        let res = wait_client
+            .post(&url)
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Failed to wait for tab output: {}", e))?;
+
+        if !res.status().is_success() {
+            return Err(format!("Wait failed: {}", res.text().unwrap_or_default()));
+        }
+
+        if args.json {
+            let val: serde_json::Value = res.json().map_err(|e| e.to_string())?;
+            safe_println(&serde_json::to_string_pretty(&val).unwrap());
+        } else {
+            println!("Matched output successfully.");
+        }
         return Ok(());
     }
 

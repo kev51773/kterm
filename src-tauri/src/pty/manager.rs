@@ -18,6 +18,7 @@ pub struct PtySession {
     pub is_dead: Arc<Mutex<bool>>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub output_buffer: Arc<Mutex<Vec<u8>>>,
+    pub ring_buffer: Arc<crate::pty::ring_buffer::RingBuffer>,
     pub tx: broadcast::Sender<Vec<u8>>,
     _master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     // Wrapped in Option so the waiter thread can take() it (releasing the lock)
@@ -148,6 +149,8 @@ impl PtyManager {
         let tx_clone = tx.clone();
         let output_buffer = Arc::new(Mutex::new(Vec::<u8>::with_capacity(65536)));
         let output_buffer_clone = output_buffer.clone();
+        let ring_buffer = Arc::new(crate::pty::RingBuffer::new());
+        let ring_buffer_clone = ring_buffer.clone();
 
         let is_dead = Arc::new(Mutex::new(false));
         let is_dead_clone = is_dead.clone();
@@ -161,6 +164,7 @@ impl PtyManager {
         let child_clone = child_arc.clone();
 
         let output_buffer_waiter = output_buffer.clone();
+        let ring_buffer_waiter = ring_buffer.clone();
         let tx_waiter = tx.clone();
 
         // Reader thread for stdout/stderr streaming
@@ -171,6 +175,7 @@ impl PtyManager {
                     Ok(0) => break,
                     Ok(n) => {
                         let chunk = &buf[..n];
+                        ring_buffer_clone.append(chunk);
                         {
                             let mut guard = output_buffer_clone.lock().unwrap();
                             guard.extend_from_slice(chunk);
@@ -209,6 +214,7 @@ impl PtyManager {
                     exit_code
                 );
                 let bytes = msg.as_bytes().to_vec();
+                ring_buffer_waiter.append(&bytes);
                 {
                     let mut guard = output_buffer_waiter.lock().unwrap();
                     guard.extend_from_slice(&bytes);
@@ -229,6 +235,7 @@ impl PtyManager {
             is_dead,
             writer,
             output_buffer,
+            ring_buffer,
             tx,
             _master: Arc::new(Mutex::new(pair.master)),
             _child: child_arc,

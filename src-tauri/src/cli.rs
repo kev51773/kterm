@@ -155,6 +155,27 @@ pub struct CliArgs {
     #[arg(long, help = "Validate YAML syntax without opening windows or modifying state")]
     pub dry_run: bool,
 
+    #[arg(long, help = "Read recent output lines from tab (optional tab ID or uses --select-tab)")]
+    pub read_text: Option<Option<String>>,
+
+    #[arg(long, help = "Number of tail lines to read for --read-text (default: 50)")]
+    pub tail: Option<usize>,
+
+    #[arg(long, help = "Keep raw ANSI codes when reading output")]
+    pub raw: bool,
+
+    #[arg(long, help = "Wait until tab output matches string pattern or regex")]
+    pub wait_for: Option<String>,
+
+    #[arg(long, help = "Include past output history when checking --wait-for pattern")]
+    pub from_history: bool,
+
+    #[arg(long, help = "Wait until tab returns to shell prompt")]
+    pub wait_for_prompt: bool,
+
+    #[arg(long, help = "Timeout in seconds for --wait-for (default: 30)")]
+    pub timeout: Option<u64>,
+
     #[arg(long, help = "Run in host daemon mode")]
     pub daemon: bool,
 }
@@ -194,6 +215,12 @@ Options:
       --move-tab <MOVE_TAB>           Move existing tab ID into split layout
       --unsplit                       Detach split pane back to standalone tab
       --explode-split                 Separate all panes in split layout into standalone tabs
+      --read-text [TAB_ID]            Read recent output lines from tab (default: 50 lines)
+      --tail <N>                      Number of tail lines to read (default: 50)
+      --raw                           Keep raw ANSI escape sequences when reading output
+      --wait-for <PATTERN>            Wait until tab output matches string pattern or regex
+      --wait-for-prompt               Wait until tab returns to shell prompt
+      --timeout <SECONDS>             Timeout in seconds for --wait-for (default: 30)
       --daemon                        Run in host daemon mode
   -h, --help                          Print help
   -V, --version                       Print version
@@ -218,6 +245,13 @@ EXAMPLES:
   Send unquoted commands / text:
     kterm --select-tab tab1 --send-text git status
     kterm --select-tab tab1 --send-text npm run dev
+
+  Output history & synchronization:
+    kterm --select-tab tab1 --read-text
+    kterm --select-tab tab1 --read-text --tail 10
+    kterm --select-tab tab1 --send-text echo hello`r
+    kterm --select-tab tab1 --wait-for hello
+    kterm --select-tab tab1 --wait-for-prompt
 
   Tab titles, badges, colors, & window title:
     kterm --select-tab tab1 --send-title Server Logs
