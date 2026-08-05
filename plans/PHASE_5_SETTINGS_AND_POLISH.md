@@ -1,99 +1,66 @@
-# Phase 5 Implementation Plan - Settings, Custom Shells & UI Polish
+# Phase 5 Unified Plan: Settings, Frameless Window, UX & Polish
 
-## Objective
-Implement user configuration management (`config.json`), a dedicated Settings UI modal, custom context menus, smart clipboard interactions, shell padding, and general UI/UX polish.
-
----
-
-## 1. Terminal UX & Clipboard Enhancements
-
-### A. Internal Shell Padding & Layout
-- Add internal CSS padding (`6px 8px`) around terminal panes to prevent text from touching window borders.
-
-### B. Custom Right-Click Context Menu
-- Override default browser right-click menu (`e.preventDefault()`).
-- Display custom `kterm` context menu with actions:
-  - *Copy* / *Paste*
-  - *Split Right* / *Split Down*
-  - *New Tab* / *Close Pane*
-
-### C. Smart `Ctrl+C` Copy
-- If text is selected in xterm -> `Ctrl+C` copies selection to clipboard.
-- If NO text is selected -> `Ctrl+C` sends standard `\x03` (SIGINT) to running process.
-
-### E. Tab Navigation & Creation Shortcuts
-- **`Ctrl+Shift+T`**: Spawn a new tab with default profile (`powershell`).
-- **`Ctrl+Tab` / `Ctrl+Shift+Tab`**: Cycle forward / backward through top-level tabs.
-- **`Ctrl+Shift+1..9`**: Jump directly to tab index 1 through 9.
-
-### F. Multi-Window Tab Movement
-- **CLI Flag `--move-to-window <WIN_ID>`**: CLI command to move an active tab session from its current window into another active GUI window (`kterm.exe --select-tab tab-101 --move-to-window win-2`).
-- **REST Handler `POST /tabs/move`**: Re-parents `tab_id` to `target_window_id` and updates layout trees across windows.
+Unified blueprint combining configuration management, category-based Settings UI, custom frameless window titlebar with Windows 11 Snap Layouts, keyboard shortcuts, dual context menus, conditional pane borders, and known bug fixes.
 
 ---
 
+## 1. Configuration & Settings Modal (Sidebar Layout)
 
-## 2. Configuration Engine (`config.json`)
+### A. Config Engine (`config.rs` & `%APPDATA%\kterm\config.json`)
+- Persistent `config.json` storing:
+  - `default_profile`: Default shell (e.g. `"powershell"`).
+  - `ring_buffer_kb`: Capacity in KB (default `256`).
+  - `terminal_padding`: Internal CSS padding in pixels (default `8`).
+  - `font`: `{ "family": "Consolas, 'Courier New', monospace", "size": 14 }`.
+  - `theme`: `{ "background": "#0d0e11", "foreground": "#cccccc", "accent": "#61afef" }`.
+- Daemon endpoints: `GET /config`, `POST /config`.
 
-### File Path
-`%APPDATA%\kterm\config.json` (or `~/.config/kterm/config.json`)
-
-### Schema Structure
-```json
-{
-  "default_profile": "powershell",
-  "close_on_exit": "graceful", // "graceful" | "always" | "never"
-  "font": {
-
-    "family": "Consolas, 'Courier New', monospace",
-    "size": 14
-  },
-  "theme": {
-    "background": "#0d0e11",
-    "foreground": "#cccccc",
-    "accent": "#61afef"
-  },
-  "profiles": [
-    {
-      "name": "powershell",
-      "command": "powershell.exe",
-      "args": ["-NoExit"],
-      "env": {}
-    },
-    {
-      "name": "cmd",
-      "command": "cmd.exe",
-      "args": ["/K"],
-      "env": {}
-    },
-    {
-      "name": "wsl",
-      "command": "wsl.exe",
-      "args": [],
-      "env": {}
-    },
-    {
-      "name": "git-bash",
-      "command": "C:\\Program Files\\Git\\bin\\bash.exe",
-      "args": ["--login"],
-      "env": {}
-    }
-  ]
-}
-```
+### B. Settings Modal (`SettingsModal.ts`)
+- Left-hand category sidebar:
+  - **General**: Default profile, ring buffer size.
+  - **Appearance**: Font family, font size, theme colors, terminal padding.
+  - **Keybindings**: View keyboard shortcuts list.
+- Triggered by ⚙️ gear icon in tab bar or `Ctrl+,`.
 
 ---
 
-## 3. Settings UI Modal / Drawer
+## 2. Custom Frameless Window & Titlebar (Windows Terminal Style)
 
-- **Trigger**: Gear icon in tab bar or `Ctrl+,` keyboard shortcut.
-- **Features**:
-  - **Profiles Tab**: Add, edit, or remove custom shell profiles and launch arguments.
-  - **Appearance Tab**: Font size, font family, theme color scheme, terminal padding.
-  - **Keybindings Tab**: View and customize keyboard shortcuts.
+### A. Frameless Window Setup
+- Set `"decorations": false` in `tauri.conf.json`.
+- Apply `data-tauri-drag-region` on tab bar background.
+
+### B. Custom Window Controls
+- Windows 11 style Minimize (`_`), Maximize/Restore (`□`), and Close (`✕`) buttons on top right of tab bar.
+- Connected via `@tauri-apps/api/window` (`minimize`, `toggleMaximize`, `close`).
+- Retain Windows 11 Snap Layouts and window drop shadows.
 
 ---
 
-## 4. Future / Backlog Additions
+## 3. Terminal UX, Shortcuts & Dual Context Menus
 
-*(Reserved for additional user-requested UI polish, extensions, and custom features)*
+### A. Keyboard Shortcuts
+- **`Ctrl+Shift+T`**: Spawn new default tab.
+- **`Ctrl+Tab` / `Ctrl+Shift+Tab`**: Cycle tabs forward/backward.
+- **`Ctrl+Shift+1..9`**: Jump to tab index 1–9.
+- **`Ctrl+,`**: Open Settings modal.
+
+### B. Smart `Ctrl+C` Copy
+- If text is selected in xterm -> copy selection to clipboard.
+- If NO text is selected -> send `\x03` (SIGINT) to process.
+
+### C. Dual Context Menus
+- **Terminal Pane Context Menu**: Right-click in terminal -> *Copy*, *Paste*.
+- **Tab Header Context Menu**: Right-click tab header -> *New Tab*, *Split Right*, *Split Down*, *Close Tab*.
+
+---
+
+## 4. Visual Polish & Bug Fixes
+
+### A. Conditional Active Focus Highlight
+- Only show active focus highlight border (`.split-pane-wrapper.active-focus`) if tab contains split panes.
+- Hide border highlight on single-pane tabs.
+
+### B. Known Bug Fixes
+- **Fix Bug 1**: Resolve initial shell launch PTY exit code 1 / spawn timing race.
+- **Fix Bug 2**: Resolve initial scrollbar blank padding before prompt (trigger fit addon resize on term container mount).

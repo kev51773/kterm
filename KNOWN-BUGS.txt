@@ -1,0 +1,38 @@
+1 - First shell sometimes (usually first launch after we rebuild) dies on launch, also Ctrl+D doesn't work in this case
+[Process exited with code 1. Click x or press Ctrl+D to close]
+
+2 - Scrollbars all seem to include several lines of blank space before the initial prompt
+
+PS C:\Users\Kev\Desktop\Terminal\src-tauri\target\release> .\kterm.exe --select-tab tab-101 --read-text
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
