@@ -663,9 +663,9 @@ async fn split_tab(
 
     let dir_str = req.direction.as_deref().unwrap_or("right").to_lowercase();
     let (direction, insert_first) = match dir_str.as_str() {
-        "up" | "top" => (SplitDirection::Vertical, true),
-        "down" | "vertical" | "v" | "bottom" => (SplitDirection::Vertical, false),
-        "left" => (SplitDirection::Horizontal, true),
+        "up" | "split-up" | "top" => (SplitDirection::Vertical, true),
+        "down" | "split-down" | "vertical" | "v" | "bottom" => (SplitDirection::Vertical, false),
+        "left" | "split-left" => (SplitDirection::Horizontal, true),
         _ => (SplitDirection::Horizontal, false),
     };
 
@@ -1124,6 +1124,27 @@ async fn shutdown_daemon() -> impl IntoResponse {
         std::process::exit(0);
     });
     (StatusCode::OK, Json(serde_json::json!({ "status": "shutting_down" })))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pty::layout::{LayoutNode, SplitDirection};
+
+    #[test]
+    fn test_split_node_tree() {
+        let mut root = LayoutNode::Pane {
+            tab_id: "tab-1".to_string(),
+        };
+
+        // Split right (Horizontal, false)
+        assert!(root.split_at("tab-1", SplitDirection::Horizontal, "tab-2", false));
+        assert!(root.contains_tab("tab-1"));
+        assert!(root.contains_tab("tab-2"));
+
+        // Split down on tab-2 (Vertical, false)
+        assert!(root.split_at("tab-2", SplitDirection::Vertical, "tab-3", false));
+        assert!(root.contains_tab("tab-3"));
+    }
 }
 
 

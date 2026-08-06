@@ -486,6 +486,10 @@ impl PtyManager {
                 result.push(sess.clone());
                 continue;
             }
+            if let Some(sess) = lock.values().find(|s| &s.id == target) {
+                result.push(sess.clone());
+                continue;
+            }
             for sess in lock.values() {
                 let title = sess.title.lock().unwrap().clone();
                 if title.eq_ignore_ascii_case(target) {

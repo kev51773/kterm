@@ -353,6 +353,7 @@ function createTabLocal(tabData: TabData) {
       if (isCtrl && !isShift && e.code === 'KeyC') {
         if (term.hasSelection()) {
           navigator.clipboard.writeText(term.getSelection());
+          term.clearSelection();
           return false; // Prevent sending SIGINT when copying text
         }
         return true; // Send SIGINT (\x03) when no selection
@@ -394,38 +395,53 @@ function createTabLocal(tabData: TabData) {
 
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowRight') {
         e.preventDefault();
-        splitPane(id, 'right');
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          splitPane(id, 'right');
+        }
         return false;
       }
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowLeft') {
         e.preventDefault();
-        splitPane(id, 'left');
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          splitPane(id, 'left');
+        }
         return false;
       }
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowDown') {
         e.preventDefault();
-        splitPane(id, 'down');
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          splitPane(id, 'down');
+        }
         return false;
       }
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowUp') {
         e.preventDefault();
-        splitPane(id, 'up');
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          splitPane(id, 'up');
+        }
         return false;
       }
       if ((isCtrlShift || isAltShift) && (e.code === 'Delete' || e.code === 'KeyW')) {
         e.preventDefault();
-        unsplitPane(id);
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          unsplitPane(id);
+        }
         return false;
       }
     }
     return true;
   });
 
-  // Terminal Pane Context Menu (Copy/Paste)
+  // Terminal Pane Context Menu (Copy/Paste & Splits)
   pane.addEventListener('contextmenu', (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    showTerminalContextMenu(e.clientX, e.clientY, term);
+    showTerminalContextMenu(e.clientX, e.clientY, term, id);
   });
 
   const instance: TabInstance = {
@@ -563,7 +579,7 @@ function renderTabBarHeaders() {
     tabEl.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      showTabHeaderContextMenu(e.clientX, e.clientY, paneIds[0]);
+      showTabHeaderContextMenu(e.clientX, e.clientY, focusedPaneId);
     });
 
     tabsListEl.appendChild(tabEl);
@@ -712,11 +728,17 @@ function removeTabLocal(id: string) {
   }
 }
 
-// Terminal Pane Context Menu (Copy/Paste)
-function showTerminalContextMenu(x: number, y: number, term: Terminal) {
+// Terminal Pane Context Menu (Copy/Paste & Splits)
+function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPaneId: string) {
   contextMenuEl.innerHTML = `
     <div class="context-menu-item" id="ctx-copy">Copy <span class="context-menu-shortcut">Ctrl+Shift+C</span></div>
     <div class="context-menu-item" id="ctx-paste">Paste <span class="context-menu-shortcut">Ctrl+Shift+V</span></div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="ctx-split-right">Split Right <span class="context-menu-shortcut">Ctrl+Shift+Right</span></div>
+    <div class="context-menu-item" id="ctx-split-left">Split Left <span class="context-menu-shortcut">Ctrl+Shift+Left</span></div>
+    <div class="context-menu-item" id="ctx-split-down">Split Down <span class="context-menu-shortcut">Ctrl+Shift+Down</span></div>
+    <div class="context-menu-item" id="ctx-split-up">Split Up <span class="context-menu-shortcut">Ctrl+Shift+Up</span></div>
+    <div class="context-menu-item" id="ctx-unsplit">Un-split Pane <span class="context-menu-shortcut">Ctrl+Shift+W</span></div>
   `;
 
   contextMenuEl.style.left = `${x}px`;
@@ -741,37 +763,76 @@ function showTerminalContextMenu(x: number, y: number, term: Terminal) {
     }
     contextMenuEl.style.display = 'none';
   });
+
+  document.getElementById('ctx-split-right')?.addEventListener('click', () => {
+    splitPane(targetPaneId, 'right');
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-split-left')?.addEventListener('click', () => {
+    splitPane(targetPaneId, 'left');
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-split-down')?.addEventListener('click', () => {
+    splitPane(targetPaneId, 'down');
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-split-up')?.addEventListener('click', () => {
+    splitPane(targetPaneId, 'up');
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-unsplit')?.addEventListener('click', () => {
+    unsplitPane(targetPaneId);
+    contextMenuEl.style.display = 'none';
+  });
 }
 
 // Tab Header Context Menu (New Tab, Split, Close)
 function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
   contextMenuEl.innerHTML = `
-    <div class="context-menu-item" id="ctx-new-tab">New Tab <span class="context-menu-shortcut">Ctrl+Shift+T</span></div>
-    <div class="context-menu-item" id="ctx-split-right">Split Right <span class="context-menu-shortcut">Ctrl+Shift+Right</span></div>
-    <div class="context-menu-item" id="ctx-split-down">Split Down <span class="context-menu-shortcut">Ctrl+Shift+Down</span></div>
-    <div class="context-menu-item" id="ctx-close-tab">Close Tab</div>
+    <div class="context-menu-item" id="ctx-tab-new">New Tab <span class="context-menu-shortcut">Ctrl+Shift+T</span></div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="ctx-tab-split-right">Split Right <span class="context-menu-shortcut">Ctrl+Shift+Right</span></div>
+    <div class="context-menu-item" id="ctx-tab-split-left">Split Left <span class="context-menu-shortcut">Ctrl+Shift+Left</span></div>
+    <div class="context-menu-item" id="ctx-tab-split-down">Split Down <span class="context-menu-shortcut">Ctrl+Shift+Down</span></div>
+    <div class="context-menu-item" id="ctx-tab-split-up">Split Up <span class="context-menu-shortcut">Ctrl+Shift+Up</span></div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="ctx-tab-close">Close Tab</div>
   `;
 
   contextMenuEl.style.left = `${x}px`;
   contextMenuEl.style.top = `${y}px`;
   contextMenuEl.style.display = 'block';
 
-  document.getElementById('ctx-new-tab')?.addEventListener('click', () => {
+  document.getElementById('ctx-tab-new')?.addEventListener('click', () => {
     spawnTabWithProfile(activeAppConfig.default_profile);
     contextMenuEl.style.display = 'none';
   });
 
-  document.getElementById('ctx-split-right')?.addEventListener('click', () => {
+  document.getElementById('ctx-tab-split-right')?.addEventListener('click', () => {
     splitPane(targetTabId, 'right');
     contextMenuEl.style.display = 'none';
   });
 
-  document.getElementById('ctx-split-down')?.addEventListener('click', () => {
+  document.getElementById('ctx-tab-split-left')?.addEventListener('click', () => {
+    splitPane(targetTabId, 'left');
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-tab-split-down')?.addEventListener('click', () => {
     splitPane(targetTabId, 'down');
     contextMenuEl.style.display = 'none';
   });
 
-  document.getElementById('ctx-close-tab')?.addEventListener('click', () => {
+  document.getElementById('ctx-tab-split-up')?.addEventListener('click', () => {
+    splitPane(targetTabId, 'up');
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-tab-close')?.addEventListener('click', () => {
     closeTab(targetTabId);
     contextMenuEl.style.display = 'none';
   });

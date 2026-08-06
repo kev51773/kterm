@@ -378,6 +378,12 @@ html, body {
   margin-left: 12px;
 }
 
+.context-menu-divider {
+  height: 1px;
+  background: #3e4451;
+  margin: 4px 0;
+}
+
 /* Settings Modal */
 .settings-modal-overlay {
   position: fixed;
