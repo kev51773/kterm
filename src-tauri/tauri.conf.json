@@ -18,10 +18,10 @@
         "width": 1000,
         "height": 650,
         "resizable": true,
-        "visible": true,
+        "visible": false,
         "focus": true,
         "center": true,
-        "decorations": true,
+        "decorations": false,
         "transparent": false,
         "alwaysOnTop": false,
         "url": "index.html"

@@ -97,7 +97,7 @@ impl PtyManager {
         profile: String,
         window_id: String,
     ) -> Result<Arc<PtySession>, String> {
-        self.spawn_with_cwd(id, profile, window_id, None)
+        self.spawn_with_size_and_cwd(id, profile, window_id, 100, 30, None)
     }
 
     pub fn spawn_with_cwd(
@@ -107,25 +107,45 @@ impl PtyManager {
         window_id: String,
         cwd: Option<&str>,
     ) -> Result<Arc<PtySession>, String> {
+        self.spawn_with_size_and_cwd(id, profile, window_id, 100, 30, cwd)
+    }
+
+    pub fn spawn_with_size_and_cwd(
+        &self,
+        id: String,
+        profile: String,
+        window_id: String,
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+    ) -> Result<Arc<PtySession>, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
-                rows: 30,
-                cols: 100,
+                rows: if rows > 0 { rows } else { 30 },
+                cols: if cols > 0 { cols } else { 100 },
                 pixel_width: 0,
                 pixel_height: 0,
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
         let mut cmd = match profile.to_lowercase().as_str() {
-            "cmd" => CommandBuilder::new("cmd.exe"),
+            "cmd" => {
+                let mut c = CommandBuilder::new("cmd.exe");
+                c.arg("/K");
+                c
+            }
             "wsl" => CommandBuilder::new("wsl.exe"),
             "git-bash" | "bash" => {
                 let mut c = CommandBuilder::new("C:\\Program Files\\Git\\bin\\bash.exe");
                 c.arg("--login");
                 c
             }
-            _ => CommandBuilder::new("powershell.exe"),
+            _ => {
+                let mut c = CommandBuilder::new("powershell.exe");
+                c.arg("-NoExit");
+                c
+            }
         };
 
         if let Some(dir) = cwd {

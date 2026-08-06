@@ -47,6 +47,8 @@ pub struct TabInfo {
 pub struct CreateTabRequest {
     pub profile: Option<String>,
     pub window: Option<String>,
+    pub cols: Option<u16>,
+    pub rows: Option<u16>,
 }
 
 #[derive(Deserialize)]
@@ -171,12 +173,14 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/windows", get(list_windows).post(create_window))
         .route("/windows/title", post(set_window_title))
         .route("/windows/close", post(close_window))
+        .route("/windows/show", post(show_window))
         .route("/tabs/:id/ws", get(ws_handler))
         .route("/apply", post(apply_session))
         .route("/export-layout", get(export_layout_endpoint))
         .route("/export", get(export_layout_endpoint))
         .route("/export-shortcut", post(export_shortcut_endpoint))
         .route("/create-shortcut", post(export_shortcut_endpoint))
+        .route("/config", get(get_config).post(update_config))
         .layer(cors)
         .with_state(state);
 
@@ -279,10 +283,13 @@ async fn create_tab(
         }
     }
 
+    let cols = payload.as_ref().and_then(|p| p.cols).unwrap_or(100);
+    let rows = payload.as_ref().and_then(|p| p.rows).unwrap_or(30);
+
     let tab_id = format!("tab-{}", TAB_COUNTER.fetch_add(1, Ordering::SeqCst));
     let session = state
         .pty_manager
-        .spawn(tab_id.clone(), profile.clone(), window_id.clone())
+        .spawn_with_size_and_cwd(tab_id.clone(), profile.clone(), window_id.clone(), cols, rows, None)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let title = session.title.lock().unwrap().clone();
@@ -864,6 +871,14 @@ async fn apply_session(
     let win_id = crate::yaml::apply_yaml_spec(&state, &spec, win_override, req.suffix.as_deref(), is_suffix_auto)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
+    if let Some(app_handle) = &state.app_handle {
+        if let Some(window) = app_handle.get_webview_window(&win_id) {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }
+
     Ok(Json(serde_json::json!({
         "status": "ok",
         "window_id": win_id
@@ -1027,6 +1042,44 @@ async fn wait_tab_output(
         ),
     }
 }
+
+async fn get_config() -> impl IntoResponse {
+    let cfg = crate::config::AppConfig::load();
+    (StatusCode::OK, Json(cfg))
+}
+
+async fn update_config(
+    Json(new_cfg): Json<crate::config::AppConfig>,
+) -> impl IntoResponse {
+    match new_cfg.save() {
+        Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        ),
+    }
+}
+
+async fn show_window(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let win_id = payload
+        .get("window")
+        .and_then(|w| w.as_str())
+        .unwrap_or("win-1");
+
+    if let Some(app_handle) = &state.app_handle {
+        if let Some(window) = app_handle.get_webview_window(win_id) {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
+        }
+    }
+    (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Window not found" })))
+}
+
 
 
 

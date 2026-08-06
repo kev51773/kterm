@@ -4,6 +4,8 @@ import '@xterm/xterm/css/xterm.css';
 import { renderLayoutTree, LayoutNode } from './components/SplitGrid';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { SettingsModal, AppConfig } from './components/SettingsModal';
 
 const DAEMON_URL = 'http://127.0.0.1:9999';
 const WS_URL = 'ws://127.0.0.1:9999';
@@ -39,11 +41,22 @@ const tabsMap = new Map<string, TabInstance>();
 let activeTabId: string | null = null;
 let activePaneId: string | null = null;
 let currentLayouts: LayoutNode[] = [];
+let activeAppConfig: AppConfig = {
+  default_profile: 'powershell',
+  ring_buffer_kb: 256,
+  terminal_padding: 8,
+  font: { family: 'Consolas, "Courier New", monospace', size: 14 },
+  theme: { background: '#0d0e11', foreground: '#cccccc', accent: '#61afef' },
+};
 
 const tabsListEl = document.getElementById('tabs-list') as HTMLElement;
 const terminalContainerEl = document.getElementById('terminal-container') as HTMLElement;
 const addTabBtn = document.getElementById('add-tab-btn') as HTMLButtonElement;
 const tabDropdownBtn = document.getElementById('tab-dropdown-btn') as HTMLButtonElement;
+const settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement;
+const winMinBtn = document.getElementById('win-min-btn') as HTMLButtonElement;
+const winMaxBtn = document.getElementById('win-max-btn') as HTMLButtonElement;
+const winCloseBtn = document.getElementById('win-close-btn') as HTMLButtonElement;
 
 const PROFILES = [
   { id: 'powershell', label: 'PowerShell' },
@@ -52,12 +65,104 @@ const PROFILES = [
   { id: 'git-bash', label: 'Git Bash' },
 ];
 
-async function spawnTabWithProfile(profile: string = 'powershell') {
+// Window Dragging & Controls Setup
+const tabBarEl = document.getElementById('tab-bar') as HTMLElement;
+if (tabBarEl) {
+  tabBarEl.addEventListener('mousedown', (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target === tabBarEl || target.id === 'tabs-list') {
+      if (e.button === 0) {
+        getCurrentWindow().startDragging();
+      }
+    }
+  });
+}
+
+if (winMinBtn) {
+  winMinBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      await getCurrentWindow().minimize();
+    } catch (err) {
+      console.error('Minimize failed:', err);
+    }
+  });
+}
+if (winMaxBtn) {
+  winMaxBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      await getCurrentWindow().toggleMaximize();
+    } catch (err) {
+      console.error('Maximize failed:', err);
+    }
+  });
+}
+if (winCloseBtn) {
+  winCloseBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      await getCurrentWindow().close();
+    } catch (err) {
+      console.error('Close failed:', err);
+    }
+  });
+}
+
+// Settings Modal Setup
+const settingsModal = new SettingsModal(DAEMON_URL, (newConfig) => {
+  applyAppConfig(newConfig);
+});
+if (settingsBtn) settingsBtn.addEventListener('click', () => settingsModal.open());
+
+function applyAppConfig(config: AppConfig) {
+  activeAppConfig = config;
+  for (const instance of tabsMap.values()) {
+    instance.term.options.fontFamily = config.font.family;
+    instance.term.options.fontSize = config.font.size;
+    instance.term.options.theme = {
+      background: config.theme.background,
+      foreground: config.theme.foreground,
+    };
+    instance.fitAddon.fit();
+  }
+  document.querySelectorAll<HTMLElement>('.split-pane-wrapper').forEach((el) => {
+    el.style.padding = `${config.terminal_padding}px`;
+  });
+}
+
+async function loadInitialConfig() {
   try {
+    const res = await fetch(`${DAEMON_URL}/config`);
+    if (res.ok) {
+      const cfg = await res.json();
+      applyAppConfig(cfg);
+    }
+  } catch (e) {
+    console.warn('Failed to load initial config from daemon', e);
+  }
+}
+
+function getContainerGridDimensions() {
+  const width = terminalContainerEl.clientWidth || 800;
+  const height = terminalContainerEl.clientHeight || 500;
+  const fontWidth = 9;
+  const fontHeight = 17;
+  const cols = Math.max(20, Math.floor((width - 16) / fontWidth));
+  const rows = Math.max(5, Math.floor((height - 16) / fontHeight));
+  return { cols, rows };
+}
+
+async function spawnTabWithProfile(profile: string = activeAppConfig.default_profile) {
+  try {
+    const { cols, rows } = getContainerGridDimensions();
     const res = await fetch(`${DAEMON_URL}/tabs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, window: currentWindowId }),
+      body: JSON.stringify({ profile, window: currentWindowId, cols, rows }),
     });
     if (res.ok) {
       const tabData: TabData = await res.json();
@@ -99,7 +204,7 @@ window.addEventListener('click', () => {
 });
 
 addTabBtn.addEventListener('click', () => {
-  spawnTabWithProfile('powershell');
+  spawnTabWithProfile(activeAppConfig.default_profile);
 });
 
 if (tabDropdownBtn) {
@@ -125,8 +230,6 @@ async function syncTabs() {
     const remoteTabs: TabData[] = await res.json();
     const remoteIds = new Set(remoteTabs.map((t) => t.id));
 
-    // Snapshot siblings of the active pane BEFORE removals, so we can stay
-    // within the same layout group if the active pane exits.
     const previousActiveTabId = activeTabId;
     const previousActiveGroup = previousActiveTabId
       ? (currentLayouts.find((n) => containsTab(n, previousActiveTabId))
@@ -163,11 +266,11 @@ async function syncTabs() {
         terminalContainerEl.innerHTML = '';
         renderTabBarHeaders();
 
-        // Auto-create new tab so window is never empty or unresponsive
+        const { cols, rows } = getContainerGridDimensions();
         fetch(`${DAEMON_URL}/tabs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile: 'powershell', window: currentWindowId }),
+          body: JSON.stringify({ profile: activeAppConfig.default_profile, window: currentWindowId, cols, rows }),
         }).then(async (createRes) => {
           if (createRes.ok) {
             const newTab: TabData = await createRes.json();
@@ -176,7 +279,6 @@ async function syncTabs() {
           }
         });
       } else if ((!activeTabId || !tabsMap.has(activeTabId)) && remoteTabs.length > 0) {
-        // Prefer a sibling pane from the same layout group before falling back to tab[0].
         const sibling = previousActiveGroup.find(
           (id) => id !== previousActiveTabId && tabsMap.has(id)
         );
@@ -185,15 +287,11 @@ async function syncTabs() {
         renderActiveLayout();
         renderTabBarHeaders();
       }
-
     }
-
   } catch (e) {
     console.warn('Failed to sync tabs with daemon', e);
   }
-
 }
-
 
 async function initDaemonConnection() {
   let attempts = 0;
@@ -201,6 +299,7 @@ async function initDaemonConnection() {
     try {
       const health = await fetch(`${DAEMON_URL}/health`);
       if (health.ok) {
+        await loadInitialConfig();
         await syncTabs();
         return;
       }
@@ -222,11 +321,11 @@ function createTabLocal(tabData: TabData) {
 
   const term = new Terminal({
     cursorBlink: true,
-    fontFamily: 'Consolas, "Courier New", monospace',
-    fontSize: 14,
+    fontFamily: activeAppConfig.font.family,
+    fontSize: activeAppConfig.font.size,
     theme: {
-      background: '#0d0e11',
-      foreground: '#cccccc',
+      background: activeAppConfig.theme.background,
+      foreground: activeAppConfig.theme.foreground,
     },
   });
 
@@ -234,38 +333,54 @@ function createTabLocal(tabData: TabData) {
   term.loadAddon(fitAddon);
   term.open(pane);
 
+  // Smart Ctrl+C & Custom Key Handlers
   term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
     if (e.type === 'keydown') {
-      const isCtrlShift = (e.ctrlKey || e.metaKey) && e.shiftKey;
-      const isAltShift = e.altKey && e.shiftKey;
+      const isCtrl = e.ctrlKey || e.metaKey;
+      const isShift = e.shiftKey;
+
+      // Smart Ctrl+C
+      if (isCtrl && !isShift && e.code === 'KeyC') {
+        if (term.hasSelection()) {
+          navigator.clipboard.writeText(term.getSelection());
+          return false; // Prevent sending SIGINT when copying text
+        }
+        return true; // Send SIGINT (\x03) when no selection
+      }
+
+      // Open Settings Shortcut
+      if (isCtrl && e.code === 'Comma') {
+        e.preventDefault();
+        settingsModal.open();
+        return false;
+      }
+
+      // Split & Unsplit Shortcuts
+      const isCtrlShift = isCtrl && isShift;
+      const isAltShift = e.altKey && isShift;
 
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowRight') {
         e.preventDefault();
-        e.stopPropagation();
         splitPane(id, 'right');
         return false;
       }
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowLeft') {
         e.preventDefault();
-        e.stopPropagation();
         splitPane(id, 'left');
         return false;
       }
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowDown') {
         e.preventDefault();
-        e.stopPropagation();
         splitPane(id, 'down');
         return false;
       }
       if ((isCtrlShift || isAltShift) && e.code === 'ArrowUp') {
         e.preventDefault();
-        e.stopPropagation();
         splitPane(id, 'up');
         return false;
       }
       if ((isCtrlShift || isAltShift) && (e.code === 'Delete' || e.code === 'KeyW')) {
         e.preventDefault();
-        e.stopPropagation();
         unsplitPane(id);
         return false;
       }
@@ -273,11 +388,11 @@ function createTabLocal(tabData: TabData) {
     return true;
   });
 
-
-
+  // Terminal Pane Context Menu (Copy/Paste)
   pane.addEventListener('contextmenu', (e: MouseEvent) => {
     e.preventDefault();
-    showContextMenu(e.clientX, e.clientY, id);
+    e.stopPropagation();
+    showTerminalContextMenu(e.clientX, e.clientY, term);
   });
 
   const instance: TabInstance = {
@@ -335,7 +450,6 @@ function connectWebSocket(instance: TabInstance) {
     }, 100);
   };
 
-
   instance.term.onData((data) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(data);
@@ -361,7 +475,6 @@ function renderTabBarHeaders() {
     const tabInst = tabsMap.get(focusedPaneId);
     const rawTitle = tabInst?.title || focusedPaneId;
 
-    // Encase title in [] for split tab groups
     const displayTitle = paneIds.length > 1 ? `[${rawTitle}]` : rawTitle;
 
     const tabEl = document.createElement('div');
@@ -411,6 +524,13 @@ function renderTabBarHeaders() {
       switchTab(focusedPaneId);
     });
 
+    // Tab Header Right-Click Context Menu
+    tabEl.addEventListener('contextmenu', (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showTabHeaderContextMenu(e.clientX, e.clientY, paneIds[0]);
+    });
+
     tabsListEl.appendChild(tabEl);
   }
 }
@@ -428,6 +548,13 @@ function renderActiveLayout() {
   const activeLayoutNode = currentLayouts.find((node) => containsTab(node, activeTabId!));
 
   terminalContainerEl.innerHTML = '';
+
+  // Toggle single-pane class to control focus border highlight
+  if (activeLayoutNode && activeLayoutNode.type === 'pane') {
+    terminalContainerEl.classList.add('single-pane');
+  } else {
+    terminalContainerEl.classList.remove('single-pane');
+  }
 
   if (activeLayoutNode) {
     const layoutEl = renderLayoutTree(
@@ -463,7 +590,13 @@ function renderActiveLayout() {
     );
     terminalContainerEl.appendChild(layoutEl);
 
-    setTimeout(() => {
+    // Apply terminal padding from config
+    document.querySelectorAll<HTMLElement>('.split-pane-wrapper').forEach((el) => {
+      el.style.padding = `${activeAppConfig.terminal_padding}px`;
+    });
+
+    // Fix Bug 2: Recalculate fit after DOM insertion
+    requestAnimationFrame(() => {
       for (const [id, instance] of tabsMap.entries()) {
         if (containsTab(activeLayoutNode, id)) {
           instance.fitAddon.fit();
@@ -472,10 +605,9 @@ function renderActiveLayout() {
       if (activePaneId) {
         tabsMap.get(activePaneId)?.term.focus();
       }
-    }, 50);
+    });
   }
 }
-
 
 function setFocusedPane(tabId: string) {
   activePaneId = tabId;
@@ -501,7 +633,6 @@ function setFocusedPane(tabId: string) {
 
   renderTabBarHeaders();
 }
-
 
 function switchTab(id: string) {
   if (!tabsMap.has(id)) return;
@@ -546,44 +677,68 @@ function removeTabLocal(id: string) {
   }
 }
 
-
-// Context Menu Logic
-function showContextMenu(x: number, y: number, targetTabId: string) {
+// Terminal Pane Context Menu (Copy/Paste)
+function showTerminalContextMenu(x: number, y: number, term: Terminal) {
   contextMenuEl.innerHTML = `
-    <div class="context-menu-item" id="ctx-split-right">Split Right <span class="context-menu-shortcut">Ctrl+Shift+Right</span></div>
-    <div class="context-menu-item" id="ctx-split-left">Split Left <span class="context-menu-shortcut">Ctrl+Shift+Left</span></div>
-    <div class="context-menu-item" id="ctx-split-down">Split Down <span class="context-menu-shortcut">Ctrl+Shift+Down</span></div>
-    <div class="context-menu-item" id="ctx-split-up">Split Up <span class="context-menu-shortcut">Ctrl+Shift+Up</span></div>
-    <div class="context-menu-item" id="ctx-unsplit">Un-split Pane <span class="context-menu-shortcut">Ctrl+Shift+Del</span></div>
-    <div class="context-menu-item" id="ctx-close">Close Pane</div>
+    <div class="context-menu-item" id="ctx-copy">Copy <span class="context-menu-shortcut">Ctrl+Shift+C</span></div>
+    <div class="context-menu-item" id="ctx-paste">Paste <span class="context-menu-shortcut">Ctrl+Shift+V</span></div>
   `;
 
   contextMenuEl.style.left = `${x}px`;
   contextMenuEl.style.top = `${y}px`;
   contextMenuEl.style.display = 'block';
 
-  document.getElementById('ctx-split-right')?.addEventListener('click', () => {
-    splitPane(targetTabId, 'right');
+  document.getElementById('ctx-copy')?.addEventListener('click', () => {
+    if (term.hasSelection()) {
+      navigator.clipboard.writeText(term.getSelection());
+    }
+    contextMenuEl.style.display = 'none';
   });
 
-  document.getElementById('ctx-split-left')?.addEventListener('click', () => {
-    splitPane(targetTabId, 'left');
+  document.getElementById('ctx-paste')?.addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        term.paste(text);
+      }
+    } catch (e) {
+      console.error('Clipboard paste failed:', e);
+    }
+    contextMenuEl.style.display = 'none';
+  });
+}
+
+// Tab Header Context Menu (New Tab, Split, Close)
+function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
+  contextMenuEl.innerHTML = `
+    <div class="context-menu-item" id="ctx-new-tab">New Tab <span class="context-menu-shortcut">Ctrl+Shift+T</span></div>
+    <div class="context-menu-item" id="ctx-split-right">Split Right <span class="context-menu-shortcut">Ctrl+Shift+Right</span></div>
+    <div class="context-menu-item" id="ctx-split-down">Split Down <span class="context-menu-shortcut">Ctrl+Shift+Down</span></div>
+    <div class="context-menu-item" id="ctx-close-tab">Close Tab</div>
+  `;
+
+  contextMenuEl.style.left = `${x}px`;
+  contextMenuEl.style.top = `${y}px`;
+  contextMenuEl.style.display = 'block';
+
+  document.getElementById('ctx-new-tab')?.addEventListener('click', () => {
+    spawnTabWithProfile(activeAppConfig.default_profile);
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-split-right')?.addEventListener('click', () => {
+    splitPane(targetTabId, 'right');
+    contextMenuEl.style.display = 'none';
   });
 
   document.getElementById('ctx-split-down')?.addEventListener('click', () => {
     splitPane(targetTabId, 'down');
+    contextMenuEl.style.display = 'none';
   });
 
-  document.getElementById('ctx-split-up')?.addEventListener('click', () => {
-    splitPane(targetTabId, 'up');
-  });
-
-  document.getElementById('ctx-unsplit')?.addEventListener('click', () => {
-    unsplitPane(targetTabId);
-  });
-
-  document.getElementById('ctx-close')?.addEventListener('click', () => {
+  document.getElementById('ctx-close-tab')?.addEventListener('click', () => {
     closeTab(targetTabId);
+    contextMenuEl.style.display = 'none';
   });
 }
 
@@ -620,10 +775,65 @@ async function unsplitPane(targetId: string) {
 
 // Global Keyboard Shortcuts
 window.addEventListener('keydown', (e: KeyboardEvent) => {
+  const isCtrl = e.ctrlKey || e.metaKey;
+  const isShift = e.shiftKey;
+
+  // Open Settings Modal (Ctrl+,)
+  if (isCtrl && e.code === 'Comma') {
+    e.preventDefault();
+    settingsModal.open();
+    return;
+  }
+
+  // New Tab (Ctrl+Shift+T)
+  if (isCtrl && isShift && e.code === 'KeyT') {
+    e.preventDefault();
+    spawnTabWithProfile(activeAppConfig.default_profile);
+    return;
+  }
+
+  // Cycle Tabs (Ctrl+Tab / Ctrl+Shift+Tab)
+  if (isCtrl && e.code === 'Tab') {
+    e.preventDefault();
+    const tabGroups = currentLayouts;
+    if (tabGroups.length <= 1) return;
+
+    const currentIdx = tabGroups.findIndex((node) => containsTab(node, activeTabId!));
+    let nextIdx = currentIdx;
+
+    if (isShift) {
+      nextIdx = (currentIdx - 1 + tabGroups.length) % tabGroups.length;
+    } else {
+      nextIdx = (currentIdx + 1) % tabGroups.length;
+    }
+
+    const nextIds = getTabIdsInNode(tabGroups[nextIdx]);
+    if (nextIds.length > 0) {
+      switchTab(nextIds[0]);
+    }
+    return;
+  }
+
+  // Jump to Tab Index 1..9 (Ctrl+Shift+1..9)
+  if (isCtrl && isShift && e.code.startsWith('Digit')) {
+    const digit = parseInt(e.code.replace('Digit', ''), 10);
+    if (digit >= 1 && digit <= 9) {
+      const idx = digit - 1;
+      if (idx < currentLayouts.length) {
+        e.preventDefault();
+        const targetIds = getTabIdsInNode(currentLayouts[idx]);
+        if (targetIds.length > 0) {
+          switchTab(targetIds[0]);
+        }
+      }
+    }
+    return;
+  }
+
   if (!activePaneId) return;
 
-  const isCtrlShift = (e.ctrlKey || e.metaKey) && e.shiftKey;
-  const isAltShift = e.altKey && e.shiftKey;
+  const isCtrlShift = isCtrl && isShift;
+  const isAltShift = e.altKey && isShift;
 
   if ((isCtrlShift || isAltShift) && e.code === 'ArrowRight') {
     e.preventDefault();
@@ -643,9 +853,6 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   }
 });
 
-
-
-// Automatic resize observer for active layout
 const resizeObserver = new ResizeObserver(() => {
   if (activeTabId) {
     const activeLayoutNode = currentLayouts.find((node) => containsTab(node, activeTabId!));
@@ -664,12 +871,13 @@ resizeObserver.observe(terminalContainerEl);
 initDaemonConnection();
 setInterval(syncTabs, 2000);
 
-// ── Export Layout Script ────────────────────────────────────────────────────
-
+// Export Layout Script Handler
 const exportBtn = document.getElementById('export-script-btn') as HTMLButtonElement;
-exportBtn.addEventListener('click', () => {
-  triggerExportSave();
-});
+if (exportBtn) {
+  exportBtn.addEventListener('click', () => {
+    triggerExportSave();
+  });
+}
 
 async function triggerExportSave(): Promise<void> {
   try {

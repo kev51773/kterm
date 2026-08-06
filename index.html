@@ -8,13 +8,19 @@
   </head>
   <body>
     <div id="app">
-      <div id="tab-bar">
-        <div id="tabs-list"></div>
-        <div class="tab-add-group">
-          <button id="add-tab-btn" title="New Tab (PowerShell)">+</button>
-          <button id="tab-dropdown-btn" title="Select Profile">⌄</button>
+      <div id="tab-bar" data-tauri-drag-region>
+        <div id="tabs-list" data-tauri-drag-region="false"></div>
+        <div class="tab-add-group" data-tauri-drag-region="false">
+          <button id="add-tab-btn" data-tauri-drag-region="false" title="New Tab (PowerShell)">+</button>
+          <button id="tab-dropdown-btn" data-tauri-drag-region="false" title="Select Profile">⌄</button>
         </div>
-        <button id="export-script-btn" title="Export Layout Script">&#x2193;</button>
+        <button id="export-script-btn" data-tauri-drag-region="false" title="Export Layout Script">&#x2193;</button>
+        <button id="settings-btn" data-tauri-drag-region="false" title="Settings (Ctrl+,)">&#x2699;</button>
+        <div id="window-controls" data-tauri-drag-region="false">
+          <button id="win-min-btn" data-tauri-drag-region="false" title="Minimize">&#x2500;</button>
+          <button id="win-max-btn" data-tauri-drag-region="false" title="Maximize / Restore">&#x25A1;</button>
+          <button id="win-close-btn" data-tauri-drag-region="false" title="Close">&#x2715;</button>
+        </div>
       </div>
       <div id="terminal-container"></div>
     </div>

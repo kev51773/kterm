@@ -614,3 +614,20 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
 
     Ok(())
 }
+
+pub fn ensure_window_visible(win_id: &str) -> Result<(), String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let res = client
+        .post("http://127.0.0.1:9999/windows/show")
+        .json(&json!({ "window": win_id }))
+        .send();
+
+    match res {
+        Ok(r) if r.status().is_success() => Ok(()),
+        _ => Err("Failed to show window".to_string()),
+    }
+}

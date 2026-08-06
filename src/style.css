@@ -188,6 +188,58 @@ html, body {
   color: #98c379;
 }
 
+#settings-btn {
+  background: transparent;
+  border: none;
+  color: #abb2bf;
+  font-size: 15px;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  margin-left: 2px;
+}
+
+#settings-btn:hover {
+  background: #2c313a;
+  color: #61afef;
+}
+
+#window-controls {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  height: 100%;
+}
+
+#window-controls button {
+  background: transparent;
+  border: none;
+  color: #9da5b4;
+  font-size: 11px;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+#window-controls button:hover {
+  background: #2c313a;
+  color: #ffffff;
+}
+
+#win-close-btn:hover {
+  background: #e06c75 !important;
+  color: #ffffff !important;
+}
+
 #terminal-container {
   flex: 1;
   position: relative;
@@ -243,7 +295,7 @@ html, body {
   height: 100%;
   position: relative;
   box-sizing: border-box;
-  padding: 3px;
+  padding: 8px;
   border: 2px solid #1e2128;
   border-radius: 6px;
   overflow: hidden;
@@ -256,13 +308,16 @@ html, body {
   box-shadow: 0 0 10px rgba(97, 175, 239, 0.3);
 }
 
+.single-pane .split-pane-wrapper.active-focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 .split-pane-wrapper .xterm {
   height: 100%;
   width: 100%;
-  padding: 2px;
   box-sizing: border-box;
 }
-
 
 .split-divider {
   background-color: #21252b;
@@ -318,4 +373,200 @@ html, body {
   color: #5c6370;
   margin-left: 12px;
 }
+
+/* Settings Modal */
+.settings-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-modal {
+  width: 680px;
+  height: 480px;
+  background: #16181d;
+  border: 1px solid #2a2d3e;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-modal-header {
+  height: 40px;
+  background: #1e2128;
+  border-bottom: 1px solid #2a2d34;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-weight: 600;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.settings-close-btn {
+  background: transparent;
+  border: none;
+  color: #9da5b4;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.settings-close-btn:hover {
+  background: #e06c75;
+  color: #ffffff;
+}
+
+.settings-modal-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.settings-sidebar {
+  width: 180px;
+  background: #1e2128;
+  border-right: 1px solid #2a2d34;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #9da5b4;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.settings-nav-item:hover {
+  background: #252932;
+  color: #ffffff;
+}
+
+.settings-nav-item.active {
+  background: #0d0e11;
+  color: #61afef;
+  font-weight: 600;
+  border-left: 3px solid #61afef;
+}
+
+.settings-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-group label {
+  font-size: 12px;
+  color: #abb2bf;
+  font-weight: 500;
+}
+
+.settings-group input,
+.settings-group select {
+  background: #0d0e11;
+  border: 1px solid #3e4451;
+  border-radius: 4px;
+  color: #ffffff;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.settings-group input:focus,
+.settings-group select:focus {
+  border-color: #61afef;
+}
+
+.settings-modal-footer {
+  height: 48px;
+  background: #1e2128;
+  border-top: 1px solid #2a2d34;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
+  gap: 10px;
+}
+
+.settings-save-btn {
+  background: #61afef;
+  color: #0d0e11;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-save-btn:hover {
+  background: #5294e2;
+}
+
+.settings-cancel-btn {
+  background: transparent;
+  color: #abb2bf;
+  border: 1px solid #3e4451;
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-cancel-btn:hover {
+  background: #252932;
+  color: #ffffff;
+}
+
+.keybindings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keybinding-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #1e2128;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.keybinding-key {
+  background: #0d0e11;
+  border: 1px solid #3e4451;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  color: #61afef;
+  font-size: 12px;
+}
+
 

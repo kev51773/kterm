@@ -1,5 +1,6 @@
 mod cli;
 mod client;
+mod config;
 mod daemon;
 mod exporter;
 mod pty;
@@ -56,20 +57,15 @@ fn main() {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
+    } else {
+        let _ = client::ensure_window_visible("win-1");
     }
 
     std::process::exit(0);
 }
 
-fn run_host_daemon(args: CliArgs) {
+fn run_host_daemon(_args: CliArgs) {
     let pty_manager = PtyManager::new();
-
-    let initial_profile = args
-        .profile
-        .clone()
-        .unwrap_or_else(|| "powershell".to_string());
-
-    let _ = pty_manager.spawn("tab-101".to_string(), initial_profile, "win-1".to_string());
 
     let window_titles = Arc::new(Mutex::new(HashMap::new()));
     window_titles.lock().unwrap().insert(
@@ -78,12 +74,6 @@ fn run_host_daemon(args: CliArgs) {
     );
 
     let window_layouts = Arc::new(Mutex::new(HashMap::new()));
-    window_layouts.lock().unwrap().insert(
-        "win-1".to_string(),
-        vec![pty::LayoutNode::Pane {
-            tab_id: "tab-101".to_string(),
-        }],
-    );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

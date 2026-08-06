@@ -3,6 +3,7 @@ use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use crate::daemon::AppState;
 use crate::pty::{LayoutNode, SplitDirection};
+use tauri::Manager;
 
 static YAML_TAB_COUNTER: AtomicU32 = AtomicU32::new(500);
 
@@ -95,11 +96,14 @@ fn validate_profile(profile: &str) -> Result<(), String> {
 
 pub fn is_window_untouched_initial(state: &AppState, window_id: &str) -> bool {
     let tabs = state.pty_manager.list_by_window(Some(window_id));
+    if tabs.is_empty() {
+        return true;
+    }
     if tabs.len() == 1 {
         let t = &tabs[0];
         let default_title = format!("{} ({})", t.profile, t.id);
         let cur_title = t.title.lock().unwrap().clone();
-        t.id == "tab-101" && cur_title == default_title
+        (t.id == "tab-101" && cur_title == default_title) || t.id.starts_with("tab-101")
     } else {
         false
     }
@@ -197,18 +201,25 @@ pub fn apply_yaml_spec(
         .insert(window_id.clone(), formatted_title.clone());
 
     if let Some(app) = &state.app_handle {
-        use tauri::WebviewWindowBuilder;
-        let builder = WebviewWindowBuilder::new(
-            app,
-            &window_id,
-            tauri::WebviewUrl::App(format!("index.html?window={}", window_id).into()),
-        )
-        .title(&formatted_title)
-        .inner_size(900.0, 600.0);
+        if let Some(existing_window) = app.get_webview_window(&window_id) {
+            let _ = existing_window.set_title(&formatted_title);
+            let _ = existing_window.show();
+            let _ = existing_window.unminimize();
+            let _ = existing_window.set_focus();
+        } else {
+            use tauri::WebviewWindowBuilder;
+            let builder = WebviewWindowBuilder::new(
+                app,
+                &window_id,
+                tauri::WebviewUrl::App(format!("index.html?window={}", window_id).into()),
+            )
+            .title(&formatted_title)
+            .inner_size(1000.0, 650.0);
 
-        if let Ok(w) = builder.build() {
-            let _ = w.show();
-            let _ = w.set_focus();
+            if let Ok(w) = builder.build() {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
         }
     }
 
