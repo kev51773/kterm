@@ -47,7 +47,7 @@ let activeAppConfig: AppConfig = {
   ring_buffer_kb: 256,
   terminal_padding: 8,
   font: { family: 'Consolas, "Courier New", monospace', size: 14 },
-  theme: { background: '#0d0e11', foreground: '#cccccc', accent: '#61afef' },
+  theme: { background: '#0d0e11', foreground: '#cccccc', highlight: '#61afef' },
 };
 
 const tabsListEl = document.getElementById('tabs-list') as HTMLElement;
@@ -69,11 +69,13 @@ const PROFILES = [
 // Window Dragging & Controls Setup
 const tabBarEl = document.getElementById('tab-bar') as HTMLElement;
 if (tabBarEl) {
-  tabBarEl.addEventListener('mousedown', (e: MouseEvent) => {
+  tabBarEl.addEventListener('dblclick', async (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target === tabBarEl || target.id === 'tabs-list') {
-      if (e.button === 0) {
-        getCurrentWindow().startDragging();
+      try {
+        await getCurrentWindow().toggleMaximize();
+      } catch (err) {
+        console.error('Toggle maximize failed:', err);
       }
     }
   });
@@ -128,6 +130,9 @@ if (settingsBtn) settingsBtn.addEventListener('click', () => settingsModal.open(
 
 function applyAppConfig(config: AppConfig) {
   activeAppConfig = config;
+  if (config.theme?.highlight) {
+    document.documentElement.style.setProperty('--highlight-color', config.theme.highlight);
+  }
   for (const instance of tabsMap.values()) {
     instance.term.options.fontFamily = config.font.family;
     instance.term.options.fontSize = config.font.size;
@@ -508,6 +513,7 @@ function renderTabBarHeaders() {
 
     const tabEl = document.createElement('div');
     tabEl.className = 'tab-item';
+    tabEl.setAttribute('data-tauri-drag-region', 'false');
     if (activeTabId && paneIds.includes(activeTabId)) {
       tabEl.classList.add('active');
     }

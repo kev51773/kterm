@@ -9,7 +9,7 @@ export interface AppConfig {
   theme: {
     background: string;
     foreground: string;
-    accent: string;
+    highlight: string;
   };
 }
 
@@ -50,7 +50,7 @@ export class SettingsModal {
         ring_buffer_kb: 256,
         terminal_padding: 8,
         font: { family: 'Consolas, "Courier New", monospace', size: 14 },
-        theme: { background: '#0d0e11', foreground: '#cccccc', accent: '#61afef' },
+        theme: { background: '#0d0e11', foreground: '#cccccc', highlight: '#61afef' },
       };
     }
   }
@@ -124,8 +124,8 @@ export class SettingsModal {
             <input type="text" id="cfg-theme-fg" value="${this.currentConfig!.theme.foreground}" />
           </div>
           <div class="settings-group">
-            <label>Accent Color</label>
-            <input type="text" id="cfg-theme-accent" value="${this.currentConfig!.theme.accent}" />
+            <label>Highlight Color</label>
+            <input type="text" id="cfg-theme-highlight" value="${this.currentConfig!.theme.highlight}" />
           </div>
         `;
       } else if (tabName === 'general') {
@@ -229,8 +229,8 @@ export class SettingsModal {
     const themeFgEl = document.getElementById('cfg-theme-fg') as HTMLInputElement | null;
     if (themeFgEl) this.currentConfig.theme.foreground = themeFgEl.value;
 
-    const themeAccentEl = document.getElementById('cfg-theme-accent') as HTMLInputElement | null;
-    if (themeAccentEl) this.currentConfig.theme.accent = themeAccentEl.value;
+    const themeHighlightEl = document.getElementById('cfg-theme-highlight') as HTMLInputElement | null;
+    if (themeHighlightEl) this.currentConfig.theme.highlight = themeHighlightEl.value;
 
     const profileEl = document.getElementById('cfg-default-profile') as HTMLSelectElement | null;
     if (profileEl) this.currentConfig.default_profile = profileEl.value;

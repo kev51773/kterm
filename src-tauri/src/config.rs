@@ -21,7 +21,7 @@ impl Default for FontConfig {
 pub struct ThemeConfig {
     pub background: String,
     pub foreground: String,
-    pub accent: String,
+    pub highlight: String,
 }
 
 impl Default for ThemeConfig {
@@ -29,7 +29,7 @@ impl Default for ThemeConfig {
         Self {
             background: "#0d0e11".to_string(),
             foreground: "#cccccc".to_string(),
-            accent: "#61afef".to_string(),
+            highlight: "#61afef".to_string(),
         }
     }
 }

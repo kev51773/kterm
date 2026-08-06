@@ -1,3 +1,7 @@
+:root {
+  --highlight-color: #61afef;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -61,7 +65,7 @@ html, body {
 .tab-item.active {
   background: #0d0e11;
   color: #ffffff;
-  border-bottom: 2px solid #61afef;
+  border-bottom: 2px solid var(--highlight-color, #61afef);
   font-weight: 500;
 }
 
@@ -73,7 +77,7 @@ html, body {
 }
 
 .tab-badge {
-  background: #61afef;
+  background: var(--highlight-color, #61afef);
   color: #0d0e11;
   font-weight: bold;
   font-size: 10px;
@@ -206,7 +210,7 @@ html, body {
 
 #settings-btn:hover {
   background: #2c313a;
-  color: #61afef;
+  color: var(--highlight-color, #61afef);
 }
 
 #window-controls {
@@ -304,8 +308,8 @@ html, body {
 }
 
 .split-pane-wrapper.active-focus {
-  border-color: #61afef;
-  box-shadow: 0 0 10px rgba(97, 175, 239, 0.3);
+  border-color: var(--highlight-color, #61afef);
+  box-shadow: 0 0 10px var(--highlight-color, #61afef);
 }
 
 .single-pane .split-pane-wrapper.active-focus {
@@ -338,7 +342,7 @@ html, body {
 }
 
 .split-divider:hover {
-  background-color: #61afef;
+  background-color: var(--highlight-color, #61afef);
 }
 
 /* Context Menu */
@@ -460,9 +464,9 @@ html, body {
 
 .settings-nav-item.active {
   background: #0d0e11;
-  color: #61afef;
+  color: var(--highlight-color, #61afef);
   font-weight: 600;
-  border-left: 3px solid #61afef;
+  border-left: 3px solid var(--highlight-color, #61afef);
 }
 
 .settings-content {
@@ -499,7 +503,7 @@ html, body {
 
 .settings-group input:focus,
 .settings-group select:focus {
-  border-color: #61afef;
+  border-color: var(--highlight-color, #61afef);
 }
 
 .settings-modal-footer {
@@ -514,7 +518,7 @@ html, body {
 }
 
 .settings-save-btn {
-  background: #61afef;
+  background: var(--highlight-color, #61afef);
   color: #0d0e11;
   border: none;
   padding: 6px 16px;
@@ -565,7 +569,7 @@ html, body {
   padding: 2px 6px;
   border-radius: 4px;
   font-family: monospace;
-  color: #61afef;
+  color: var(--highlight-color, #61afef);
   font-size: 12px;
 }
 
