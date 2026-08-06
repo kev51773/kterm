@@ -169,6 +169,35 @@ function getContainerGridDimensions() {
   return { cols, rows };
 }
 
+async function pasteToPane(tabId: string) {
+  try {
+    let text = '';
+    try {
+      const res = await fetch(`${DAEMON_URL}/clipboard`);
+      if (res.ok) {
+        const data = await res.json();
+        text = data.text || '';
+      }
+    } catch {}
+
+    if (!text) {
+      text = await navigator.clipboard.readText();
+    }
+    if (!text) return;
+
+    const inst = tabsMap.get(tabId);
+    if (inst) {
+      if (inst.ws && inst.ws.readyState === WebSocket.OPEN) {
+        inst.ws.send(text);
+      } else {
+        inst.term.paste(text);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to paste clipboard text:', e);
+  }
+}
+
 async function spawnTabWithProfile(profile: string = activeAppConfig.default_profile) {
   try {
     const { cols, rows } = getContainerGridDimensions();
@@ -359,6 +388,16 @@ function createTabLocal(tabData: TabData) {
         return true; // Send SIGINT (\x03) when no selection
       }
 
+      // Ctrl+V or Ctrl+Shift+V (Universal Paste)
+      if (isCtrl && (e.code === 'KeyV' || e.key === 'v' || e.key === 'V')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          pasteToPane(id);
+        }
+        return false;
+      }
+
       // New Tab with Active Profile (Ctrl+Shift+T)
       if (isCtrl && isShift && e.code === 'KeyT') {
         e.preventDefault();
@@ -435,6 +474,15 @@ function createTabLocal(tabData: TabData) {
       }
     }
     return true;
+  });
+
+  // Middle-Click Paste (auxclick only to prevent double paste)
+  pane.addEventListener('auxclick', (e: MouseEvent) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      pasteToPane(id);
+    }
   });
 
   // Terminal Pane Context Menu (Copy/Paste & Splits)
@@ -752,15 +800,8 @@ function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPan
     contextMenuEl.style.display = 'none';
   });
 
-  document.getElementById('ctx-paste')?.addEventListener('click', async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        term.paste(text);
-      }
-    } catch (e) {
-      console.error('Clipboard paste failed:', e);
-    }
+  document.getElementById('ctx-paste')?.addEventListener('click', () => {
+    pasteToPane(targetPaneId);
     contextMenuEl.style.display = 'none';
   });
 
