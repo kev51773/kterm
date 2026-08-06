@@ -22,6 +22,22 @@ pub struct ThemeConfig {
     pub background: String,
     pub foreground: String,
     pub highlight: String,
+    #[serde(default = "default_title_bar")]
+    pub title_bar: String,
+    #[serde(default = "default_active_tab")]
+    pub active_tab: String,
+    #[serde(default = "default_inactive_tab")]
+    pub inactive_tab: String,
+}
+
+fn default_title_bar() -> String {
+    "#21252b".to_string()
+}
+fn default_active_tab() -> String {
+    "#0d0e11".to_string()
+}
+fn default_inactive_tab() -> String {
+    "#181a1f".to_string()
 }
 
 impl Default for ThemeConfig {
@@ -30,6 +46,9 @@ impl Default for ThemeConfig {
             background: "#0d0e11".to_string(),
             foreground: "#cccccc".to_string(),
             highlight: "#61afef".to_string(),
+            title_bar: default_title_bar(),
+            active_tab: default_active_tab(),
+            inactive_tab: default_inactive_tab(),
         }
     }
 }

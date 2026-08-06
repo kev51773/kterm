@@ -10,6 +10,9 @@ export interface AppConfig {
     background: string;
     foreground: string;
     highlight: string;
+    title_bar?: string;
+    active_tab?: string;
+    inactive_tab?: string;
   };
 }
 
@@ -127,6 +130,18 @@ export class SettingsModal {
             <label>Highlight Color</label>
             <input type="text" id="cfg-theme-highlight" value="${this.currentConfig!.theme.highlight}" />
           </div>
+          <div class="settings-group">
+            <label>Title Bar Background</label>
+            <input type="text" id="cfg-theme-title-bar" value="${this.currentConfig!.theme.title_bar || '#21252b'}" />
+          </div>
+          <div class="settings-group">
+            <label>Active Tab Background</label>
+            <input type="text" id="cfg-theme-active-tab" value="${this.currentConfig!.theme.active_tab || '#0d0e11'}" />
+          </div>
+          <div class="settings-group">
+            <label>Inactive Tab Background</label>
+            <input type="text" id="cfg-theme-inactive-tab" value="${this.currentConfig!.theme.inactive_tab || '#181a1f'}" />
+          </div>
         `;
       } else if (tabName === 'general') {
         content.innerHTML = `
@@ -231,6 +246,15 @@ export class SettingsModal {
 
     const themeHighlightEl = document.getElementById('cfg-theme-highlight') as HTMLInputElement | null;
     if (themeHighlightEl) this.currentConfig.theme.highlight = themeHighlightEl.value;
+
+    const themeTitleBarEl = document.getElementById('cfg-theme-title-bar') as HTMLInputElement | null;
+    if (themeTitleBarEl) this.currentConfig.theme.title_bar = themeTitleBarEl.value;
+
+    const themeActiveTabEl = document.getElementById('cfg-theme-active-tab') as HTMLInputElement | null;
+    if (themeActiveTabEl) this.currentConfig.theme.active_tab = themeActiveTabEl.value;
+
+    const themeInactiveTabEl = document.getElementById('cfg-theme-inactive-tab') as HTMLInputElement | null;
+    if (themeInactiveTabEl) this.currentConfig.theme.inactive_tab = themeInactiveTabEl.value;
 
     const profileEl = document.getElementById('cfg-default-profile') as HTMLSelectElement | null;
     if (profileEl) this.currentConfig.default_profile = profileEl.value;

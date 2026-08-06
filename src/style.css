@@ -1,5 +1,9 @@
 :root {
   --highlight-color: #61afef;
+  --title-bar-bg: #21252b;
+  --active-tab-bg: #0d0e11;
+  --inactive-tab-bg: #181a1f;
+  --terminal-bg: #0d0e11;
 }
 
 html, body {
@@ -8,7 +12,7 @@ html, body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #0d0e11;
+  background-color: var(--terminal-bg, #0d0e11);
   color: #e0e0e0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   user-select: none;
@@ -23,18 +27,20 @@ html, body {
 
 #tab-bar {
   display: flex;
-  align-items: center;
-  background: #16181d;
-  border-bottom: 1px solid #2a2d34;
+  align-items: flex-end;
+  background: var(--title-bar-bg, #21252b);
+  border-bottom: none;
   height: 38px;
   padding-left: 8px;
   gap: 4px;
   overflow-x: auto;
+  position: relative;
+  z-index: 10;
 }
 
 #tabs-list {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
   height: 100%;
 }
@@ -43,30 +49,33 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 30px;
+  height: 32px;
   padding: 0 12px;
-  background: #1e2128;
-  border: 1px solid #2a2d3e;
+  background: var(--inactive-tab-bg, #181a1f);
+  border: none !important;
   border-radius: 6px 6px 0 0;
-  color: #9da5b4;
+  color: #abb2bf;
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   position: relative;
   max-width: 180px;
   min-width: 100px;
+  box-sizing: border-box;
+  margin-bottom: 0;
 }
 
 .tab-item:hover {
-  background: #252932;
-  color: #d7dae0;
+  background: #282c34;
+  color: #ffffff;
 }
 
 .tab-item.active {
-  background: #0d0e11;
+  background: var(--active-tab-bg, #0d0e11);
   color: #ffffff;
-  border-bottom: 2px solid var(--highlight-color, #61afef);
-  font-weight: 500;
+  border: none !important;
+  font-weight: 600;
+  z-index: 2;
 }
 
 .tab-title {
@@ -106,6 +115,8 @@ html, body {
 .tab-add-group {
   display: flex;
   align-items: center;
+  align-self: center;
+  margin-bottom: 4px;
   gap: 1px;
 }
 
@@ -185,6 +196,8 @@ html, body {
   justify-content: center;
   transition: background 0.15s ease, color 0.15s ease;
   margin-left: 2px;
+  align-self: center;
+  margin-bottom: 4px;
 }
 
 #export-script-btn:hover {
@@ -206,6 +219,8 @@ html, body {
   justify-content: center;
   transition: background 0.15s ease, color 0.15s ease;
   margin-left: 2px;
+  align-self: center;
+  margin-bottom: 4px;
 }
 
 #settings-btn:hover {
@@ -249,7 +264,7 @@ html, body {
   position: relative;
   width: 100%;
   height: calc(100% - 38px);
-  background-color: #0d0e11;
+  background-color: var(--active-tab-bg, #0d0e11);
 }
 
 .terminal-pane {
@@ -292,6 +307,10 @@ html, body {
   box-sizing: border-box;
 }
 
+.single-pane .split-sub-container {
+  padding: 0;
+}
+
 .split-pane-wrapper {
   display: flex;
   flex: 1;
@@ -303,13 +322,18 @@ html, body {
   border: 2px solid #1e2128;
   border-radius: 6px;
   overflow: hidden;
-  background-color: #0d0e11;
+  background-color: var(--active-tab-bg, #0d0e11);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .split-pane-wrapper.active-focus {
   border-color: var(--highlight-color, #61afef);
   box-shadow: 0 0 10px var(--highlight-color, #61afef);
+}
+
+.single-pane .split-pane-wrapper {
+  border: none !important;
+  border-radius: 0 !important;
 }
 
 .single-pane .split-pane-wrapper.active-focus {

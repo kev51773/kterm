@@ -133,6 +133,18 @@ function applyAppConfig(config: AppConfig) {
   if (config.theme?.highlight) {
     document.documentElement.style.setProperty('--highlight-color', config.theme.highlight);
   }
+  if (config.theme?.title_bar) {
+    document.documentElement.style.setProperty('--title-bar-bg', config.theme.title_bar);
+  }
+  if (config.theme?.active_tab) {
+    document.documentElement.style.setProperty('--active-tab-bg', config.theme.active_tab);
+  }
+  if (config.theme?.inactive_tab) {
+    document.documentElement.style.setProperty('--inactive-tab-bg', config.theme.inactive_tab);
+  }
+  if (config.theme?.background) {
+    document.documentElement.style.setProperty('--terminal-bg', config.theme.background);
+  }
   for (const instance of tabsMap.values()) {
     instance.term.options.fontFamily = config.font.family;
     instance.term.options.fontSize = config.font.size;
