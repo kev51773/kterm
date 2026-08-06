@@ -31,7 +31,6 @@ pub struct AppState {
     pub window_layouts: Arc<Mutex<HashMap<String, Vec<LayoutNode>>>>,
 }
 
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TabInfo {
     pub id: String,
@@ -148,6 +147,8 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         auto_close_tab(&state_clone, &tab_id);
     });
 
+    state.cleanup_all_orphaned();
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -181,6 +182,8 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/export-shortcut", post(export_shortcut_endpoint))
         .route("/create-shortcut", post(export_shortcut_endpoint))
         .route("/config", get(get_config).post(update_config))
+        .route("/build_id", get(get_build_id))
+        .route("/shutdown", post(shutdown_daemon))
         .layer(cors)
         .with_state(state);
 
@@ -221,8 +224,8 @@ async fn health_check() -> StatusCode {
 }
 
 async fn list_tabs(
-    State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
 ) -> Json<Vec<TabInfo>> {
     let window_filter = params.get("window").map(|s| s.as_str());
     let sessions = state.pty_manager.list_by_window(window_filter);
@@ -262,26 +265,6 @@ async fn create_tab(
         .filter(|w| !w.trim().is_empty())
         .unwrap_or_else(|| "win-1".to_string());
 
-    // Reuse untouched single tab-101 if it's the only tab in the window
-    let existing_tabs = state.pty_manager.list_by_window(Some(&window_id));
-    if existing_tabs.len() == 1 {
-        let first = &existing_tabs[0];
-        let default_title = format!("{} ({})", first.profile, first.id);
-        let cur_title = first.title.lock().unwrap().clone();
-        if first.id == "tab-101" && cur_title == default_title && first.profile == profile {
-            let badge = first.badge.lock().unwrap().clone();
-            let color = first.color.lock().unwrap().clone();
-            return Ok(Json(TabInfo {
-                id: first.id.clone(),
-                pid: first.pid,
-                profile: first.profile.clone(),
-                window_id: first.window_id.clone(),
-                title: cur_title,
-                badge,
-                color,
-            }));
-        }
-    }
 
     let cols = payload.as_ref().and_then(|p| p.cols).unwrap_or(100);
     let rows = payload.as_ref().and_then(|p| p.rows).unwrap_or(30);
@@ -382,16 +365,41 @@ async fn set_window_title(
     Ok(StatusCode::OK)
 }
 
+impl AppState {
+    pub fn cleanup_window(&self, window_id: &str) {
+        self.pty_manager.close_all_for_window(window_id);
+        self.window_titles.lock().unwrap().remove(window_id);
+        self.window_layouts.lock().unwrap().remove(window_id);
+    }
+
+    pub fn cleanup_all_orphaned(&self) {
+        self.pty_manager.prune_dead_sessions();
+        if let Some(app) = &self.app_handle {
+            let active_windows: std::collections::HashSet<String> = app
+                .webview_windows()
+                .keys()
+                .cloned()
+                .collect();
+
+            let all_pty_sessions = self.pty_manager.list_by_window(None);
+            let pty_windows: std::collections::HashSet<String> =
+                all_pty_sessions.into_iter().map(|s| s.window_id.clone()).collect();
+
+            for win_id in pty_windows {
+                if !active_windows.contains(&win_id) {
+                    self.cleanup_window(&win_id);
+                }
+            }
+        }
+    }
+}
+
 async fn close_window(
     State(state): State<AppState>,
     Json(req): Json<CloseWindowRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let window_id = req.window;
-    let sessions = state.pty_manager.list_by_window(Some(&window_id));
-    for s in sessions {
-        state.pty_manager.close(&s.id);
-    }
-    state.window_titles.lock().unwrap().remove(&window_id);
+    state.cleanup_window(&window_id);
 
     if let Some(app) = &state.app_handle {
         if let Some(win) = app.get_webview_window(&window_id) {
@@ -400,6 +408,7 @@ async fn close_window(
     }
     Ok(StatusCode::OK)
 }
+
 
 async fn set_badge(
     State(state): State<AppState>,
@@ -442,6 +451,9 @@ async fn close_tabs(
         .resolve_tabs_strict(&req.targets, req.window.as_deref())
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
+    let affected_windows: std::collections::HashSet<String> =
+        sessions.iter().map(|s| s.window_id.clone()).collect();
+
     {
         let mut layouts = state.window_layouts.lock().unwrap();
         for session in &sessions {
@@ -463,6 +475,20 @@ async fn close_tabs(
 
     for session in &sessions {
         state.pty_manager.close(&session.id);
+    }
+
+    // Rule 1: Close window if no tabs remain
+    for win_id in affected_windows {
+        let remaining = state.pty_manager.list_by_window(Some(&win_id));
+        if remaining.is_empty() {
+            state.window_titles.lock().unwrap().remove(&win_id);
+            state.window_layouts.lock().unwrap().remove(&win_id);
+            if let Some(app) = &state.app_handle {
+                if let Some(win) = app.get_webview_window(&win_id) {
+                    let _ = win.close();
+                }
+            }
+        }
     }
 
     Ok(StatusCode::OK)
@@ -518,6 +544,7 @@ async fn create_window(
     if let Some(app) = &state.app_handle {
         let win_num = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
         let label = format!("win-{}", win_num);
+        state.cleanup_window(&label);
 
         let window_title = format!("kterm.exe - A scriptable terminal - {}", label);
 
@@ -583,17 +610,15 @@ async fn handle_websocket(socket: WebSocket, session: Arc<crate::pty::PtySession
     // Replay initial history buffer on connect to guarantee startup prompt is never missed
     let history = session.get_output_history();
     if !history.is_empty() {
-        if let Ok(text) = String::from_utf8(history) {
-            let _ = ws_sender.send(Message::Text(text)).await;
-        }
+        let text = String::from_utf8_lossy(&history).to_string();
+        let _ = ws_sender.send(Message::Text(text)).await;
     }
 
     let mut send_task = tokio::spawn(async move {
         while let Ok(bytes) = rx.recv().await {
-            if let Ok(text) = String::from_utf8(bytes) {
-                if ws_sender.send(Message::Text(text)).await.is_err() {
-                    break;
-                }
+            let text = String::from_utf8_lossy(&bytes).to_string();
+            if ws_sender.send(Message::Text(text)).await.is_err() {
+                break;
             }
         }
     });
@@ -1078,6 +1103,19 @@ async fn show_window(
         }
     }
     (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Window not found" })))
+}
+
+async fn get_build_id() -> impl IntoResponse {
+    let build_id = env!("CARGO_PKG_VERSION");
+    (StatusCode::OK, Json(serde_json::json!({ "build_id": build_id })))
+}
+
+async fn shutdown_daemon() -> impl IntoResponse {
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        std::process::exit(0);
+    });
+    (StatusCode::OK, Json(serde_json::json!({ "status": "shutting_down" })))
 }
 
 

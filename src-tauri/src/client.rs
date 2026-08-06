@@ -134,7 +134,27 @@ fn spawn_daemon_detached(exe_path: &std::path::Path) -> Result<(), String> {
 
 pub fn ensure_daemon_running() -> Result<(), String> {
     if is_daemon_running() {
-        return Ok(());
+        // Check if running daemon matches current binary version
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_millis(200))
+            .build()
+            .ok();
+        if let Some(c) = client {
+            if let Ok(res) = c.get("http://127.0.0.1:9999/build_id").send() {
+                if let Ok(json) = res.json::<serde_json::Value>() {
+                    let running_id = json.get("build_id").and_then(|v| v.as_str()).unwrap_or("");
+                    if running_id == env!("CARGO_PKG_VERSION") {
+                        return Ok(());
+                    }
+                    eprintln!("[kterm] Stale daemon detected (version '{}' vs '{}'). Restarting...", running_id, env!("CARGO_PKG_VERSION"));
+                    let _ = c.post("http://127.0.0.1:9999/shutdown").send();
+                    std::thread::sleep(Duration::from_millis(300));
+                }
+            }
+        } else {
+            return Ok(());
+        }
     }
 
     let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;

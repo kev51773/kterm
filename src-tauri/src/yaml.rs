@@ -103,7 +103,7 @@ pub fn is_window_untouched_initial(state: &AppState, window_id: &str) -> bool {
         let t = &tabs[0];
         let default_title = format!("{} ({})", t.profile, t.id);
         let cur_title = t.title.lock().unwrap().clone();
-        (t.id == "tab-101" && cur_title == default_title) || t.id.starts_with("tab-101")
+        t.id == "tab-101" || t.id.starts_with("tab-101") || t.id.starts_with("tab-500") || cur_title == default_title
     } else {
         false
     }
@@ -116,33 +116,24 @@ pub fn resolve_window_id(
     suffix_auto: bool,
 ) -> String {
     let base_win_id = base_id.trim();
-    if suffix_auto {
+    if let Some(s) = suffix {
+        format!("{}{}", base_win_id, s)
+    } else if suffix_auto {
         let titles = state.window_titles.lock().unwrap();
         let layouts = state.window_layouts.lock().unwrap();
         let exists = titles.contains_key(base_win_id) || layouts.contains_key(base_win_id);
-        drop(titles);
-        drop(layouts);
-
-        if exists {
-            if is_window_untouched_initial(state, base_win_id) {
-                return base_win_id.to_string();
-            }
+        if !exists || is_window_untouched_initial(state, base_win_id) {
+            base_win_id.to_string()
         } else {
-            return base_win_id.to_string();
-        }
-
-        let titles = state.window_titles.lock().unwrap();
-        let layouts = state.window_layouts.lock().unwrap();
-        let mut idx = 1;
-        loop {
-            let candidate = format!("{}-{}", base_win_id, idx);
-            if !titles.contains_key(&candidate) && !layouts.contains_key(&candidate) {
-                break candidate;
+            let mut count = 1;
+            loop {
+                let candidate = format!("{}-{}", base_win_id, count);
+                if !titles.contains_key(&candidate) && !layouts.contains_key(&candidate) {
+                    return candidate;
+                }
+                count += 1;
             }
-            idx += 1;
         }
-    } else if let Some(s) = suffix {
-        format!("{}{}", base_win_id, s)
     } else {
         base_win_id.to_string()
     }
@@ -172,13 +163,12 @@ pub fn apply_yaml_spec(
         drop(layouts);
 
         if exists {
-            if is_window_untouched_initial(state, &window_id) {
-                state.pty_manager.close("tab-101");
-                state.window_layouts.lock().unwrap().remove(&window_id);
-                state.window_titles.lock().unwrap().remove(&window_id);
-            } else {
-                return Err(format!("Window '{}' already exists.", window_id));
+            let existing_tabs = state.pty_manager.list_by_window(Some(&window_id));
+            for t in existing_tabs {
+                state.pty_manager.close(&t.id);
             }
+            state.window_layouts.lock().unwrap().remove(&window_id);
+            state.window_titles.lock().unwrap().remove(&window_id);
         }
     }
 

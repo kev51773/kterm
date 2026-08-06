@@ -66,7 +66,43 @@ impl PtySession {
             libc::kill(self.pid as libc::pid_t, libc::SIGKILL);
         }
     }
+
+    pub fn is_alive(&self) -> bool {
+        if *self.is_dead.lock().unwrap() {
+            return false;
+        }
+        is_process_alive(self.pid)
+    }
 }
+
+pub fn is_process_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        extern "system" {
+            fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+            fn GetExitCodeProcess(handle: *mut std::ffi::c_void, exit_code: *mut u32) -> i32;
+            fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+        }
+        unsafe {
+            let handle = OpenProcess(0x1000, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            let mut exit_code: u32 = 0;
+            let res = GetExitCodeProcess(handle, &mut exit_code);
+            CloseHandle(handle);
+            res != 0 && exit_code == 259
+        }
+    }
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(pid as libc::pid_t, 0) == 0
+    }
+}
+
 
 unsafe impl Sync for PtySession {}
 
@@ -137,8 +173,23 @@ impl PtyManager {
             }
             "wsl" => CommandBuilder::new("wsl.exe"),
             "git-bash" | "bash" => {
-                let mut c = CommandBuilder::new("C:\\Program Files\\Git\\bin\\bash.exe");
+                let bash_path = if std::path::Path::new("C:\\Program Files\\Git\\bin\\bash.exe").exists() {
+                    "C:\\Program Files\\Git\\bin\\bash.exe".to_string()
+                } else if let Ok(local) = std::env::var("LOCALAPPDATA") {
+                    let p = format!("{}\\Programs\\Git\\bin\\bash.exe", local);
+                    if std::path::Path::new(&p).exists() {
+                        p
+                    } else {
+                        "bash.exe".to_string()
+                    }
+                } else {
+                    "bash.exe".to_string()
+                };
+                let mut c = CommandBuilder::new(bash_path);
                 c.arg("--login");
+                c.arg("-i");
+                c.env("TERM", "xterm-256color");
+                c.env("MSYSTEM", "MINGW64");
                 c
             }
             _ => {
@@ -294,7 +345,32 @@ impl PtyManager {
         self.list_by_window(None)
     }
 
+    pub fn prune_dead_sessions(&self) -> Vec<String> {
+        let mut lock = self.sessions.lock().unwrap();
+        let mut dead_keys = Vec::new();
+        for (key, session) in lock.iter() {
+            if !session.is_alive() {
+                dead_keys.push(key.clone());
+            }
+        }
+        let mut removed_ids = Vec::new();
+        for key in dead_keys {
+            if let Some(session) = lock.remove(&key) {
+                removed_ids.push(session.id.clone());
+            }
+        }
+        removed_ids
+    }
+
+    pub fn close_all_for_window(&self, window_id: &str) {
+        let sessions = self.list_by_window(Some(window_id));
+        for s in sessions {
+            self.close(&s.id);
+        }
+    }
+
     pub fn list_by_window(&self, window_id: Option<&str>) -> Vec<Arc<PtySession>> {
+        self.prune_dead_sessions();
         let lock = self.sessions.lock().unwrap();
         let mut list: Vec<Arc<PtySession>> = lock
             .values()

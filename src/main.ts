@@ -27,6 +27,7 @@ interface TabData {
 
 interface TabInstance {
   id: string;
+  profile: string;
   title: string;
   badge?: string;
   color?: string;
@@ -105,9 +106,16 @@ if (winCloseBtn) {
     e.stopPropagation();
     e.preventDefault();
     try {
-      await getCurrentWindow().close();
+      await fetch(`${DAEMON_URL}/windows/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ window: currentWindowId }),
+      });
     } catch (err) {
-      console.error('Close failed:', err);
+      console.error('Close via daemon failed:', err);
+      try {
+        await getCurrentWindow().close();
+      } catch (e2) {}
     }
   });
 }
@@ -156,7 +164,11 @@ function getContainerGridDimensions() {
   return { cols, rows };
 }
 
+let isSpawningTab = false;
+
 async function spawnTabWithProfile(profile: string = activeAppConfig.default_profile) {
+  if (isSpawningTab) return;
+  isSpawningTab = true;
   try {
     const { cols, rows } = getContainerGridDimensions();
     const res = await fetch(`${DAEMON_URL}/tabs`, {
@@ -171,6 +183,8 @@ async function spawnTabWithProfile(profile: string = activeAppConfig.default_pro
     }
   } catch (e) {
     console.error(`Failed to create new tab with profile ${profile}`, e);
+  } finally {
+    isSpawningTab = false;
   }
 }
 
@@ -223,6 +237,9 @@ if (tabDropdownBtn) {
   });
 }
 
+let isAutoSpawning = false;
+let isInitialSync = true;
+
 async function syncTabs() {
   try {
     const res = await fetch(`${DAEMON_URL}/tabs?window=${encodeURIComponent(currentWindowId)}`);
@@ -260,7 +277,28 @@ async function syncTabs() {
       const layoutChanged = tabListChanged || JSON.stringify(newLayouts) !== JSON.stringify(currentLayouts);
       currentLayouts = newLayouts;
 
-      if (tabsMap.size === 0) {
+      const wasInitialSync = isInitialSync;
+      if (!isInitialSync && remoteTabs.length === 0) {
+        getCurrentWindow().close();
+        return;
+      }
+      isInitialSync = false;
+
+      if (tabsMap.size === 0 && remoteTabs.length === 0 && !isAutoSpawning) {
+        if (wasInitialSync) {
+          // Grace period for CLI --apply requests on startup
+          await new Promise((r) => setTimeout(r, 200));
+          const checkRes = await fetch(`${DAEMON_URL}/tabs?window=${encodeURIComponent(currentWindowId)}`);
+          if (checkRes.ok) {
+            const checkTabs: TabData[] = await checkRes.json();
+            if (checkTabs.length > 0) {
+              await syncTabs();
+              return;
+            }
+          }
+        }
+
+        isAutoSpawning = true;
         activeTabId = null;
         activePaneId = null;
         terminalContainerEl.innerHTML = '';
@@ -272,11 +310,14 @@ async function syncTabs() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ profile: activeAppConfig.default_profile, window: currentWindowId, cols, rows }),
         }).then(async (createRes) => {
+          isAutoSpawning = false;
           if (createRes.ok) {
             const newTab: TabData = await createRes.json();
             createTabLocal(newTab);
             switchTab(newTab.id);
           }
+        }).catch(() => {
+          isAutoSpawning = false;
         });
       } else if ((!activeTabId || !tabsMap.has(activeTabId)) && remoteTabs.length > 0) {
         const sibling = previousActiveGroup.find(
@@ -348,10 +389,33 @@ function createTabLocal(tabData: TabData) {
         return true; // Send SIGINT (\x03) when no selection
       }
 
+      // New Tab with Active Profile (Ctrl+Shift+T)
+      if (isCtrl && isShift && e.code === 'KeyT') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          spawnActiveProfileTab();
+        }
+        return false;
+      }
+
+      // Cycle Tabs (Ctrl+Tab / Ctrl+Shift+Tab)
+      if (isCtrl && e.code === 'Tab') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          cycleTabs(isShift);
+        }
+        return false;
+      }
+
       // Open Settings Shortcut
       if (isCtrl && e.code === 'Comma') {
         e.preventDefault();
-        settingsModal.open();
+        e.stopImmediatePropagation();
+        if (!e.repeat) {
+          settingsModal.open();
+        }
         return false;
       }
 
@@ -397,6 +461,7 @@ function createTabLocal(tabData: TabData) {
 
   const instance: TabInstance = {
     id,
+    profile: tabData.profile,
     title: tabData.title || `Tab ${id}`,
     badge: tabData.badge,
     color: tabData.color,
@@ -773,8 +838,35 @@ async function unsplitPane(targetId: string) {
   }
 }
 
+function cycleTabs(reverse: boolean = false) {
+  const tabGroups = currentLayouts;
+  if (tabGroups.length <= 1) return;
+
+  const currentIdx = tabGroups.findIndex((node) => containsTab(node, activeTabId!));
+  let nextIdx = currentIdx;
+
+  if (reverse) {
+    nextIdx = (currentIdx - 1 + tabGroups.length) % tabGroups.length;
+  } else {
+    nextIdx = (currentIdx + 1) % tabGroups.length;
+  }
+
+  const nextIds = getTabIdsInNode(tabGroups[nextIdx]);
+  if (nextIds.length > 0) {
+    switchTab(nextIds[0]);
+  }
+}
+
+function spawnActiveProfileTab() {
+  const activeInst = activePaneId ? tabsMap.get(activePaneId) : null;
+  const profileToSpawn = activeInst ? activeInst.profile : activeAppConfig.default_profile;
+  spawnTabWithProfile(profileToSpawn);
+}
+
 // Global Keyboard Shortcuts
 window.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (e.repeat) return;
+
   const isCtrl = e.ctrlKey || e.metaKey;
   const isShift = e.shiftKey;
 
@@ -785,32 +877,17 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
-  // New Tab (Ctrl+Shift+T)
+  // New Tab with Active Profile (Ctrl+Shift+T)
   if (isCtrl && isShift && e.code === 'KeyT') {
     e.preventDefault();
-    spawnTabWithProfile(activeAppConfig.default_profile);
+    spawnActiveProfileTab();
     return;
   }
 
   // Cycle Tabs (Ctrl+Tab / Ctrl+Shift+Tab)
   if (isCtrl && e.code === 'Tab') {
     e.preventDefault();
-    const tabGroups = currentLayouts;
-    if (tabGroups.length <= 1) return;
-
-    const currentIdx = tabGroups.findIndex((node) => containsTab(node, activeTabId!));
-    let nextIdx = currentIdx;
-
-    if (isShift) {
-      nextIdx = (currentIdx - 1 + tabGroups.length) % tabGroups.length;
-    } else {
-      nextIdx = (currentIdx + 1) % tabGroups.length;
-    }
-
-    const nextIds = getTabIdsInNode(tabGroups[nextIdx]);
-    if (nextIds.length > 0) {
-      switchTab(nextIds[0]);
-    }
+    cycleTabs(isShift);
     return;
   }
 

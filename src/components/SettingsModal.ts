@@ -71,7 +71,16 @@ export class SettingsModal {
       <span>Settings</span>
       <button class="settings-close-btn">&times;</button>
     `;
-    header.querySelector('.settings-close-btn')?.addEventListener('click', () => this.close());
+    const closeBtn = header.querySelector('.settings-close-btn');
+    const handleClose = (e: Event) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.close();
+    };
+    if (closeBtn) {
+      closeBtn.addEventListener('click', handleClose);
+      closeBtn.addEventListener('mousedown', handleClose);
+    }
 
     // Body
     const body = document.createElement('div');
@@ -138,7 +147,7 @@ export class SettingsModal {
       } else if (tabName === 'keybindings') {
         content.innerHTML = `
           <div class="keybindings-list">
-            <div class="keybinding-row"><span>New Tab</span><span class="keybinding-key">Ctrl + Shift + T</span></div>
+            <div class="keybinding-row"><span>New Tab (Active Shell)</span><span class="keybinding-key">Ctrl + Shift + T</span></div>
             <div class="keybinding-row"><span>Cycle Tabs Forward</span><span class="keybinding-key">Ctrl + Tab</span></div>
             <div class="keybinding-row"><span>Cycle Tabs Backward</span><span class="keybinding-key">Ctrl + Shift + Tab</span></div>
             <div class="keybinding-row"><span>Jump to Tab 1..9</span><span class="keybinding-key">Ctrl + Shift + 1..9</span></div>
@@ -174,7 +183,12 @@ export class SettingsModal {
       <button class="settings-save-btn">Save Settings</button>
     `;
 
-    footer.querySelector('.settings-cancel-btn')?.addEventListener('click', () => this.close());
+    const cancelBtn = footer.querySelector('.settings-cancel-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', handleClose);
+      cancelBtn.addEventListener('mousedown', handleClose);
+    }
+
     footer.querySelector('.settings-save-btn')?.addEventListener('click', () => this.save());
 
     modal.appendChild(header);
@@ -185,6 +199,14 @@ export class SettingsModal {
     this.overlay.addEventListener('click', (e) => {
       if (e.target === this.overlay) this.close();
     });
+
+    const keyListener = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        window.removeEventListener('keydown', keyListener);
+        this.close();
+      }
+    };
+    window.addEventListener('keydown', keyListener);
 
     document.body.appendChild(this.overlay);
   }

@@ -75,10 +75,22 @@ fn run_host_daemon(_args: CliArgs) {
 
     let window_layouts = Arc::new(Mutex::new(HashMap::new()));
 
+    let pty_manager_event = pty_manager.clone();
+    let window_titles_event = window_titles.clone();
+    let window_layouts_event = window_layouts.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
+            // Pre-flight purge for win-1 on daemon setup
+            let sessions = pty_manager.list_by_window(Some("win-1"));
+            for s in sessions {
+                pty_manager.close(&s.id);
+            }
+            window_titles.lock().unwrap().remove("win-1");
+            window_layouts.lock().unwrap().remove("win-1");
+
             if let Some(window) = app.get_webview_window("win-1") {
                 eprintln!("[kterm host] Primary window 'win-1' initialized");
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
@@ -107,6 +119,26 @@ fn run_host_daemon(_args: CliArgs) {
                 daemon::run_server("127.0.0.1:9999", daemon_state).await;
             });
             Ok(())
+        })
+        .on_window_event(move |window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let win_label = window.label();
+                eprintln!("[kterm] Window '{}' destroyed. Cleaning up PTY sessions and layout state.", win_label);
+
+                let sessions = pty_manager_event.list_by_window(Some(win_label));
+                for s in sessions {
+                    pty_manager_event.close(&s.id);
+                }
+                window_titles_event.lock().unwrap().remove(win_label);
+                window_layouts_event.lock().unwrap().remove(win_label);
+
+                let app = window.app_handle();
+                let remaining = app.webview_windows();
+                if remaining.is_empty() || (remaining.len() == 1 && remaining.contains_key(win_label)) {
+                    eprintln!("[kterm] Last window closed. Terminating background daemon and child PTY processes.");
+                    std::process::exit(0);
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
