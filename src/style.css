@@ -654,6 +654,44 @@ html, body {
   font-size: 13px;
 }
 
+/* Custom Theme Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--terminal-bg, #0d0e11);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(171, 178, 191, 0.25);
+  border-radius: 4px;
+  border: 2px solid var(--terminal-bg, #0d0e11);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--highlight-color, #61afef);
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--highlight-color, #61afef);
+}
+
 .keybinding-key {
   background: #0d0e11;
   border: 1px solid #3e4451;
