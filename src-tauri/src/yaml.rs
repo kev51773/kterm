@@ -107,17 +107,7 @@ pub fn generate_next_window_id(state: &AppState) -> String {
 
 pub fn is_window_untouched_initial(state: &AppState, window_id: &str) -> bool {
     let tabs = state.pty_manager.list_by_window(Some(window_id));
-    if tabs.is_empty() {
-        return true;
-    }
-    if tabs.len() == 1 {
-        let t = &tabs[0];
-        let default_title = format!("{} ({})", t.profile, t.id);
-        let cur_title = t.title.lock().unwrap().clone();
-        t.id == "tab-101" || t.id.starts_with("tab-101") || t.id.starts_with("tab-500") || cur_title == default_title
-    } else {
-        false
-    }
+    tabs.is_empty()
 }
 
 pub fn resolve_window_id(

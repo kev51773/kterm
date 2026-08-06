@@ -478,7 +478,7 @@ async fn close_tabs(
     }
 
     for session in &sessions {
-        state.pty_manager.close(&session.id);
+        state.pty_manager.close_in_window(&session.id, Some(&session.window_id));
     }
 
     // Rule 1: Close window if no tabs remain

@@ -537,7 +537,7 @@ function renderTabBarHeaders() {
         const res = await fetch(`${DAEMON_URL}/tabs/close`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targets: paneIds }),
+          body: JSON.stringify({ targets: paneIds, window: currentWindowId }),
         });
         if (res.ok) {
           await syncTabs();
@@ -677,7 +677,7 @@ async function closeTab(id: string) {
     const res = await fetch(`${DAEMON_URL}/tabs/close`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targets: [id] }),
+      body: JSON.stringify({ targets: [id], window: currentWindowId }),
     });
     if (res.ok) {
       removeTabLocal(id);

@@ -392,13 +392,6 @@ impl PtyManager {
         removed_ids
     }
 
-    pub fn close_all_for_window(&self, window_id: &str) {
-        let sessions = self.list_by_window(Some(window_id));
-        for s in sessions {
-            self.close(&s.id);
-        }
-    }
-
     pub fn list_by_window(&self, window_id: Option<&str>) -> Vec<Arc<PtySession>> {
         self.prune_dead_sessions();
         let lock = self.sessions.lock().unwrap();
@@ -424,12 +417,35 @@ impl PtyManager {
     }
 
     pub fn close(&self, id: &str) -> bool {
+        self.close_in_window(id, None)
+    }
+
+    pub fn close_in_window(&self, id: &str, window_id: Option<&str>) -> bool {
         let mut lock = self.sessions.lock().unwrap();
-        let target_key = if lock.contains_key(id) {
-            Some(id.to_string())
+        let target_key = if let Some(w) = window_id {
+            if !w.is_empty() {
+                let map_key = format!("{}:{}", w, id);
+                if lock.contains_key(&map_key) {
+                    Some(map_key)
+                } else {
+                    lock.iter()
+                        .find(|(_, s)| s.id == id && s.window_id == w)
+                        .map(|(k, _)| k.clone())
+                }
+            } else {
+                None
+            }
         } else {
-            lock.iter().find(|(_, s)| s.id == id).map(|(k, _)| k.clone())
+            None
         };
+
+        let target_key = target_key.or_else(|| {
+            if lock.contains_key(id) {
+                Some(id.to_string())
+            } else {
+                lock.iter().find(|(_, s)| s.id == id).map(|(k, _)| k.clone())
+            }
+        });
 
         if let Some(key) = target_key {
             if let Some(session) = lock.remove(&key) {
@@ -443,6 +459,13 @@ impl PtyManager {
             }
         }
         false
+    }
+
+    pub fn close_all_for_window(&self, window_id: &str) {
+        let sessions = self.list_by_window(Some(window_id));
+        for s in sessions {
+            self.close_in_window(&s.id, Some(window_id));
+        }
     }
 
     pub fn resolve_tabs(&self, targets: &[String]) -> Vec<Arc<PtySession>> {
