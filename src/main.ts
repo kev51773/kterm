@@ -128,6 +128,25 @@ const settingsModal = new SettingsModal(DAEMON_URL, (newConfig) => {
 });
 if (settingsBtn) settingsBtn.addEventListener('click', () => settingsModal.open());
 
+const CAMPBELL_THEME = {
+  black: '#0C0C0C',
+  red: '#C50F1F',
+  green: '#13A10E',
+  yellow: '#C19C00',
+  blue: '#0037DA',
+  magenta: '#881798',
+  cyan: '#3A96DD',
+  white: '#CCCCCC',
+  brightBlack: '#767676',
+  brightRed: '#E74856',
+  brightGreen: '#16C60C',
+  brightYellow: '#F9F1A5',
+  brightBlue: '#3B78FF',
+  brightMagenta: '#B4009E',
+  brightCyan: '#61D6D6',
+  brightWhite: '#F2F2F2',
+};
+
 function applyAppConfig(config: AppConfig) {
   activeAppConfig = config;
   if (config.theme?.highlight) {
@@ -145,14 +164,33 @@ function applyAppConfig(config: AppConfig) {
   if (config.theme?.background) {
     document.documentElement.style.setProperty('--terminal-bg', config.theme.background);
   }
+  if (config.theme?.tab_hover) {
+    document.documentElement.style.setProperty('--tab-hover-bg', config.theme.tab_hover);
+  }
+  if (config.theme?.active_tab_fg) {
+    document.documentElement.style.setProperty('--active-tab-fg', config.theme.active_tab_fg);
+  }
+  if (config.theme?.inactive_tab_fg) {
+    document.documentElement.style.setProperty('--inactive-tab-fg', config.theme.inactive_tab_fg);
+  }
   for (const instance of tabsMap.values()) {
     instance.term.options.fontFamily = config.font.family;
     instance.term.options.fontSize = config.font.size;
+    instance.term.options.drawBoldTextInBrightColors = true;
+    instance.term.options.minimumContrastRatio = 1.2;
     instance.term.options.theme = {
+      ...CAMPBELL_THEME,
       background: config.theme.background,
       foreground: config.theme.foreground,
+      cursor: config.theme.foreground,
+      cursorAccent: config.theme.background,
+      selectionBackground: config.theme.highlight ? `${config.theme.highlight}44` : 'rgba(255, 255, 255, 0.25)',
     };
+    if ((instance.term as any)._core?._charSizeService) {
+      (instance.term as any)._core._charSizeService.clear();
+    }
     instance.fitAddon.fit();
+    instance.term.refresh(0, instance.term.rows - 1);
   }
   document.querySelectorAll<HTMLElement>('.split-pane-wrapper').forEach((el) => {
     el.style.padding = `${config.terminal_padding}px`;
@@ -372,11 +410,17 @@ function createTabLocal(tabData: TabData) {
 
   const term = new Terminal({
     cursorBlink: true,
+    drawBoldTextInBrightColors: true,
+    minimumContrastRatio: 1.2,
     fontFamily: activeAppConfig.font.family,
     fontSize: activeAppConfig.font.size,
     theme: {
+      ...CAMPBELL_THEME,
       background: activeAppConfig.theme.background,
       foreground: activeAppConfig.theme.foreground,
+      cursor: activeAppConfig.theme.foreground,
+      cursorAccent: activeAppConfig.theme.background,
+      selectionBackground: activeAppConfig.theme.highlight ? `${activeAppConfig.theme.highlight}44` : 'rgba(255, 255, 255, 0.25)',
     },
   });
 
@@ -538,7 +582,7 @@ function connectWebSocket(instance: TabInstance) {
 
   ws.onopen = () => {
     instance.fitAddon.fit();
-    const cols = instance.term.cols || 100;
+    const cols = instance.term.cols || 120;
     const rows = instance.term.rows || 30;
     ws.send(JSON.stringify({ type: 'resize', cols, rows }));
   };

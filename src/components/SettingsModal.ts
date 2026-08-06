@@ -13,6 +13,9 @@ export interface AppConfig {
     title_bar?: string;
     active_tab?: string;
     inactive_tab?: string;
+    tab_hover?: string;
+    active_tab_fg?: string;
+    inactive_tab_fg?: string;
   };
 }
 
@@ -144,10 +147,37 @@ export class SettingsModal {
     const renderTabContent = (tabName: string) => {
       content.innerHTML = '';
       if (tabName === 'appearance') {
+        const curFont = this.currentConfig!.font.family || 'Consolas, monospace';
+        const FONT_OPTIONS = [
+          { label: 'Consolas', value: 'Consolas, monospace' },
+          { label: 'Cascadia Code', value: 'Cascadia Code, Consolas, monospace' },
+          { label: 'Cascadia Mono', value: 'Cascadia Mono, Consolas, monospace' },
+          { label: 'Courier New', value: 'Courier New, monospace' },
+          { label: 'Lucida Console', value: 'Lucida Console, monospace' },
+          { label: 'Fira Code', value: 'Fira Code, Consolas, monospace' },
+          { label: 'JetBrains Mono', value: 'JetBrains Mono, Consolas, monospace' },
+          { label: 'Source Code Pro', value: 'Source Code Pro, Consolas, monospace' },
+          { label: 'Custom Font...', value: 'custom' },
+        ];
+
+        const normCur = curFont.replace(/['"]/g, '').toLowerCase().trim();
+        let matchedPreset = FONT_OPTIONS.find((o) => {
+          if (o.value === 'custom') return false;
+          const normVal = o.value.replace(/['"]/g, '').toLowerCase().trim();
+          const normLabel = o.label.replace(/['"]/g, '').toLowerCase().trim();
+          return normCur === normVal || normCur.startsWith(normLabel);
+        });
+        let isCustom = !matchedPreset;
+        let selectedPresetVal = matchedPreset ? matchedPreset.value : 'custom';
+
         content.innerHTML = `
+          <div class="settings-section-header">Font & Layout</div>
           <div class="settings-group">
             <label>Font Family</label>
-            <input type="text" id="cfg-font-family" value="${this.currentConfig!.font.family}" />
+            <select id="cfg-font-family-select">
+              ${FONT_OPTIONS.map((o) => `<option value="${o.value}" ${o.value === selectedPresetVal ? 'selected' : ''}>${o.label}</option>`).join('')}
+            </select>
+            <input type="text" id="cfg-font-family-custom" value="${curFont}" style="margin-top: 4px; display: ${isCustom ? 'block' : 'none'};" placeholder="Enter custom font family..." />
           </div>
           <div class="settings-group">
             <label>Font Size (px)</label>
@@ -157,21 +187,50 @@ export class SettingsModal {
             <label>Terminal Padding (px)</label>
             <input type="number" id="cfg-padding" value="${this.currentConfig!.terminal_padding}" min="0" max="32" />
           </div>
+
+          <div class="settings-section-header">Title & Tab Colors</div>
+          ${renderColorInput('cfg-theme-title-bar', 'Title Bar Background', this.currentConfig!.theme.title_bar || '#21252b')}
+          ${renderColorInput('cfg-theme-active-tab', 'Active Tab Background', this.currentConfig!.theme.active_tab || '#0d0e11')}
+          ${renderColorInput('cfg-theme-active-tab-fg', 'Active Tab Font Color', this.currentConfig!.theme.active_tab_fg || '#ffffff')}
+          ${renderColorInput('cfg-theme-inactive-tab', 'Inactive Tab Background', this.currentConfig!.theme.inactive_tab || '#181a1f')}
+          ${renderColorInput('cfg-theme-inactive-tab-fg', 'Inactive Tab Font Color', this.currentConfig!.theme.inactive_tab_fg || '#abb2bf')}
+          ${renderColorInput('cfg-theme-tab-hover', 'Tab Hover Background', this.currentConfig!.theme.tab_hover || '#282c34')}
+
+          <div class="settings-section-header">Terminal Palette</div>
           ${renderColorInput('cfg-theme-bg', 'Background Color', this.currentConfig!.theme.background)}
           ${renderColorInput('cfg-theme-fg', 'Foreground Color', this.currentConfig!.theme.foreground)}
           ${renderColorInput('cfg-theme-highlight', 'Highlight Color', this.currentConfig!.theme.highlight)}
-          ${renderColorInput('cfg-theme-title-bar', 'Title Bar Background', this.currentConfig!.theme.title_bar || '#21252b')}
-          ${renderColorInput('cfg-theme-active-tab', 'Active Tab Background', this.currentConfig!.theme.active_tab || '#0d0e11')}
-          ${renderColorInput('cfg-theme-inactive-tab', 'Inactive Tab Background', this.currentConfig!.theme.inactive_tab || '#181a1f')}
         `;
+
+        const fontFamilySelect = content.querySelector('#cfg-font-family-select') as HTMLSelectElement | null;
+        const fontFamilyCustom = content.querySelector('#cfg-font-family-custom') as HTMLInputElement | null;
+        const fontSizeInput = content.querySelector('#cfg-font-size') as HTMLInputElement | null;
+        const paddingInput = content.querySelector('#cfg-padding') as HTMLInputElement | null;
+
         const applyLivePreview = () => {
           if (!this.currentConfig) return;
+
+          let fontVal = fontFamilySelect?.value || 'custom';
+          if (fontVal === 'custom') {
+            fontVal = fontFamilyCustom?.value.trim() || 'Consolas, monospace';
+          }
+          if (fontVal) this.currentConfig.font.family = fontVal;
+
+          const sizeVal = parseInt(fontSizeInput?.value || '14', 10);
+          if (!isNaN(sizeVal)) this.currentConfig.font.size = sizeVal;
+
+          const padVal = parseInt(paddingInput?.value || '8', 10);
+          if (!isNaN(padVal)) this.currentConfig.terminal_padding = padVal;
+
           const bg = (content.querySelector('#cfg-theme-bg') as HTMLInputElement | null)?.value;
           const fg = (content.querySelector('#cfg-theme-fg') as HTMLInputElement | null)?.value;
           const hl = (content.querySelector('#cfg-theme-highlight') as HTMLInputElement | null)?.value;
           const tb = (content.querySelector('#cfg-theme-title-bar') as HTMLInputElement | null)?.value;
           const at = (content.querySelector('#cfg-theme-active-tab') as HTMLInputElement | null)?.value;
           const it = (content.querySelector('#cfg-theme-inactive-tab') as HTMLInputElement | null)?.value;
+          const th = (content.querySelector('#cfg-theme-tab-hover') as HTMLInputElement | null)?.value;
+          const af = (content.querySelector('#cfg-theme-active-tab-fg') as HTMLInputElement | null)?.value;
+          const inf = (content.querySelector('#cfg-theme-inactive-tab-fg') as HTMLInputElement | null)?.value;
 
           if (bg) this.currentConfig.theme.background = bg;
           if (fg) this.currentConfig.theme.foreground = fg;
@@ -179,12 +238,41 @@ export class SettingsModal {
           if (tb) this.currentConfig.theme.title_bar = tb;
           if (at) this.currentConfig.theme.active_tab = at;
           if (it) this.currentConfig.theme.inactive_tab = it;
+          if (th) this.currentConfig.theme.tab_hover = th;
+          if (af) this.currentConfig.theme.active_tab_fg = af;
+          if (inf) this.currentConfig.theme.inactive_tab_fg = inf;
 
           this.onSaveCallback(this.currentConfig);
         };
 
+        if (fontFamilySelect && fontFamilyCustom) {
+          fontFamilySelect.addEventListener('change', () => {
+            if (fontFamilySelect.value === 'custom') {
+              fontFamilyCustom.style.display = 'block';
+            } else {
+              fontFamilyCustom.style.display = 'none';
+            }
+            applyLivePreview();
+          });
+          fontFamilyCustom.addEventListener('input', applyLivePreview);
+        }
+        if (fontSizeInput) fontSizeInput.addEventListener('input', applyLivePreview);
+        if (paddingInput) paddingInput.addEventListener('input', applyLivePreview);
+
+        const colorIds = [
+          'cfg-theme-bg',
+          'cfg-theme-fg',
+          'cfg-theme-highlight',
+          'cfg-theme-title-bar',
+          'cfg-theme-active-tab',
+          'cfg-theme-active-tab-fg',
+          'cfg-theme-inactive-tab',
+          'cfg-theme-inactive-tab-fg',
+          'cfg-theme-tab-hover',
+        ];
+
         const baseColorMap = new Map<string, string>();
-        ['cfg-theme-bg', 'cfg-theme-fg', 'cfg-theme-highlight', 'cfg-theme-title-bar', 'cfg-theme-active-tab', 'cfg-theme-inactive-tab'].forEach((id) => {
+        colorIds.forEach((id) => {
           const textEl = content.querySelector(`#${id}`) as HTMLInputElement | null;
           const pickerEl = content.querySelector(`#${id}-picker`) as HTMLInputElement | null;
           const sliderEl = content.querySelector(`#${id}-brightness`) as HTMLInputElement | null;
@@ -282,16 +370,21 @@ export class SettingsModal {
       cancelBtn.addEventListener('mousedown', handleClose);
     }
 
-    footer.querySelector('.settings-save-btn')?.addEventListener('click', () => this.save());
+    const saveBtn = footer.querySelector('.settings-save-btn');
+    const handleSave = (e: Event) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.save();
+    };
+    if (saveBtn) {
+      saveBtn.addEventListener('click', handleSave);
+      saveBtn.addEventListener('mousedown', handleSave);
+    }
 
     modal.appendChild(header);
     modal.appendChild(body);
     modal.appendChild(footer);
     this.overlay.appendChild(modal);
-
-    this.overlay.addEventListener('click', (e) => {
-      if (e.target === this.overlay) this.close();
-    });
 
     const keyListener = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -307,8 +400,15 @@ export class SettingsModal {
   private async save() {
     if (!this.currentConfig) return;
 
-    const fontFamilyEl = document.getElementById('cfg-font-family') as HTMLInputElement | null;
-    if (fontFamilyEl) this.currentConfig.font.family = fontFamilyEl.value;
+    const fontFamilySelect = document.getElementById('cfg-font-family-select') as HTMLSelectElement | null;
+    const fontFamilyCustom = document.getElementById('cfg-font-family-custom') as HTMLInputElement | null;
+    if (fontFamilySelect) {
+      if (fontFamilySelect.value === 'custom' && fontFamilyCustom) {
+        this.currentConfig.font.family = fontFamilyCustom.value.trim() || 'Consolas, monospace';
+      } else if (fontFamilySelect.value !== 'custom') {
+        this.currentConfig.font.family = fontFamilySelect.value;
+      }
+    }
 
     const fontSizeEl = document.getElementById('cfg-font-size') as HTMLInputElement | null;
     if (fontSizeEl) this.currentConfig.font.size = parseInt(fontSizeEl.value, 10) || 14;
@@ -340,17 +440,16 @@ export class SettingsModal {
     const bufferEl = document.getElementById('cfg-ring-buffer') as HTMLInputElement | null;
     if (bufferEl) this.currentConfig.ring_buffer_kb = parseInt(bufferEl.value, 10) || 256;
 
+    this.isSaved = true;
+    this.onSaveCallback(this.currentConfig);
+    this.close();
+
     try {
-      const res = await fetch(`${this.daemonUrl}/config`, {
+      await fetch(`${this.daemonUrl}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(this.currentConfig),
       });
-      if (res.ok) {
-        this.isSaved = true;
-        this.onSaveCallback(this.currentConfig);
-        this.close();
-      }
     } catch (e) {
       console.error('Failed to save config:', e);
     }

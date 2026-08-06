@@ -2,7 +2,10 @@
   --highlight-color: #61afef;
   --title-bar-bg: #21252b;
   --active-tab-bg: #0d0e11;
+  --active-tab-fg: #ffffff;
   --inactive-tab-bg: #181a1f;
+  --inactive-tab-fg: #abb2bf;
+  --tab-hover-bg: #282c34;
   --terminal-bg: #0d0e11;
 }
 
@@ -32,7 +35,7 @@ html, body {
   border-bottom: none;
   height: 38px;
   padding-left: 8px;
-  gap: 4px;
+  gap: 2px;
   overflow-x: auto;
   position: relative;
   z-index: 10;
@@ -41,21 +44,22 @@ html, body {
 #tabs-list {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
+  gap: 2px;
   height: 100%;
 }
 
 .tab-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   height: 32px;
   padding: 0 12px;
   background: var(--inactive-tab-bg, #181a1f);
   border: none !important;
-  border-radius: 6px 6px 0 0;
-  color: #abb2bf;
-  font-size: 12px;
+  border-radius: 8px 8px 0 0;
+  color: var(--inactive-tab-fg, #abb2bf);
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   position: relative;
@@ -66,13 +70,13 @@ html, body {
 }
 
 .tab-item:hover {
-  background: #282c34;
+  background: var(--tab-hover-bg, #282c34);
   color: #ffffff;
 }
 
 .tab-item.active {
   background: var(--active-tab-bg, #0d0e11);
-  color: #ffffff;
+  color: var(--active-tab-fg, #ffffff);
   border: none !important;
   font-weight: 600;
   z-index: 2;
@@ -415,12 +419,13 @@ html, body {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.15);
   backdrop-filter: none;
   z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .settings-modal {
@@ -433,6 +438,7 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  pointer-events: auto;
 }
 
 .settings-modal-header {
@@ -470,17 +476,17 @@ html, body {
 }
 
 .settings-sidebar {
-  width: 180px;
+  width: 130px;
   background: #1e2128;
   border-right: 1px solid #2a2d34;
-  padding: 12px 0;
+  padding: 8px 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .settings-nav-item {
-  padding: 10px 16px;
+  padding: 8px 14px;
   font-size: 13px;
   color: #9da5b4;
   cursor: pointer;
@@ -501,17 +507,29 @@ html, body {
 
 .settings-content {
   flex: 1;
-  padding: 20px;
+  padding: 12px 16px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
+}
+
+.settings-section-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--highlight-color, #61afef);
+  margin-top: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #2a2d3e;
+  padding-bottom: 4px;
 }
 
 .settings-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .settings-group label {

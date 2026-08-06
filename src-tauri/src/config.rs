@@ -28,6 +28,12 @@ pub struct ThemeConfig {
     pub active_tab: String,
     #[serde(default = "default_inactive_tab")]
     pub inactive_tab: String,
+    #[serde(default = "default_tab_hover")]
+    pub tab_hover: String,
+    #[serde(default = "default_active_tab_fg")]
+    pub active_tab_fg: String,
+    #[serde(default = "default_inactive_tab_fg")]
+    pub inactive_tab_fg: String,
 }
 
 fn default_title_bar() -> String {
@@ -39,6 +45,15 @@ fn default_active_tab() -> String {
 fn default_inactive_tab() -> String {
     "#181a1f".to_string()
 }
+fn default_tab_hover() -> String {
+    "#282c34".to_string()
+}
+fn default_active_tab_fg() -> String {
+    "#ffffff".to_string()
+}
+fn default_inactive_tab_fg() -> String {
+    "#abb2bf".to_string()
+}
 
 impl Default for ThemeConfig {
     fn default() -> Self {
@@ -49,6 +64,9 @@ impl Default for ThemeConfig {
             title_bar: default_title_bar(),
             active_tab: default_active_tab(),
             inactive_tab: default_inactive_tab(),
+            tab_hover: default_tab_hover(),
+            active_tab_fg: default_active_tab_fg(),
+            inactive_tab_fg: default_inactive_tab_fg(),
         }
     }
 }

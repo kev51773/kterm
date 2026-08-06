@@ -266,7 +266,7 @@ async fn create_tab(
         .unwrap_or_else(|| "win-1".to_string());
 
 
-    let cols = payload.as_ref().and_then(|p| p.cols).unwrap_or(100);
+    let cols = payload.as_ref().and_then(|p| p.cols).unwrap_or(120);
     let rows = payload.as_ref().and_then(|p| p.rows).unwrap_or(30);
 
     let tab_id = state.pty_manager.generate_next_tab_id_for_window(&window_id);
