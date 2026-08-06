@@ -211,6 +211,7 @@ pub fn apply_yaml_spec(
                 tauri::WebviewUrl::App(format!("index.html?window={}", window_id).into()),
             )
             .title(&formatted_title)
+            .decorations(false)
             .inner_size(1000.0, 650.0);
 
             if let Ok(w) = builder.build() {

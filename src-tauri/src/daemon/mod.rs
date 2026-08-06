@@ -401,13 +401,8 @@ async fn close_window(
     state.cleanup_window(&window_id);
 
     if let Some(app) = &state.app_handle {
-        let remaining = app.webview_windows();
         if let Some(win) = app.get_webview_window(&window_id) {
             let _ = win.close();
-        }
-        if remaining.is_empty() || (remaining.len() == 1 && remaining.contains_key(&window_id)) {
-            eprintln!("[kterm daemon] Last window closed via HTTP request. Terminating process.");
-            std::process::exit(0);
         }
     }
     Ok(StatusCode::OK)
