@@ -635,19 +635,34 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
     Ok(())
 }
 
-pub fn ensure_window_visible(win_id: &str) -> Result<(), String> {
+pub fn ensure_window_visible(_win_id: &str) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(5))
         .build()
         .map_err(|e| e.to_string())?;
 
-    let res = client
-        .post("http://127.0.0.1:9999/windows/show")
-        .json(&json!({ "window": win_id }))
+    let cfg = crate::config::AppConfig::load();
+    let default_profile = if cfg.default_profile.trim().is_empty() {
+        "powershell"
+    } else {
+        &cfg.default_profile
+    };
+
+    let default_yaml = format!(
+        "window:\n  id: null\ntabs:\n- id: null\n  profile: {}\n",
+        default_profile
+    );
+
+    let body = json!({
+        "yaml": default_yaml,
+        "suffix_auto": true,
+    });
+
+    let _ = client
+        .post("http://127.0.0.1:9999/apply")
+        .json(&body)
         .send();
 
-    match res {
-        Ok(r) if r.status().is_success() => Ok(()),
-        _ => Err("Failed to show window".to_string()),
-    }
+    Ok(())
 }

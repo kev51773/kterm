@@ -146,6 +146,33 @@ impl PtyManager {
         self.spawn_with_size_and_cwd(id, profile, window_id, 100, 30, cwd)
     }
 
+    pub fn generate_next_tab_id_for_window(&self, window_id: &str) -> String {
+        let lock = self.sessions.lock().unwrap();
+        let mut max_id: u32 = 0;
+        for s in lock.values() {
+            if s.window_id == window_id {
+                if let Some(num_str) = s.id.strip_prefix("tab-") {
+                    if let Ok(num) = num_str.parse::<u32>() {
+                        if num > max_id {
+                            max_id = num;
+                        }
+                    }
+                }
+            }
+        }
+        let mut candidate_num = max_id + 1;
+        loop {
+            let candidate = format!("tab-{}", candidate_num);
+            let exists = lock
+                .values()
+                .any(|s| s.window_id == window_id && s.id == candidate);
+            if !exists {
+                return candidate;
+            }
+            candidate_num += 1;
+        }
+    }
+
     pub fn spawn_with_size_and_cwd(
         &self,
         id: String,
@@ -211,6 +238,9 @@ impl PtyManager {
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         let pid = child.process_id().unwrap_or(0);
+        #[cfg(windows)]
+        assign_pid_to_job(pid);
+
         let writer = Arc::new(Mutex::new(
             pair.master.take_writer().map_err(|e| e.to_string())?,
         ));
@@ -514,5 +544,91 @@ impl PtyManager {
         }
 
         Ok(result)
+    }
+}
+
+#[cfg(windows)]
+fn assign_pid_to_job(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+    use std::sync::Once;
+    static START: Once = Once::new();
+    static mut JOB_HANDLE: *mut std::ffi::c_void = std::ptr::null_mut();
+
+    unsafe {
+        START.call_once(|| {
+            extern "system" {
+                fn CreateJobObjectW(lpJobAttributes: *mut std::ffi::c_void, lpName: *const u16) -> *mut std::ffi::c_void;
+                fn SetInformationJobObject(
+                    hJob: *mut std::ffi::c_void,
+                    JobObjectInformationClass: i32,
+                    lpJobObjectInformation: *const std::ffi::c_void,
+                    cbJobObjectInformationLength: u32,
+                ) -> i32;
+            }
+
+            #[repr(C)]
+            struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+                per_process_user_time_limit: i64,
+                per_job_user_time_limit: i64,
+                limit_flags: u32,
+                minimum_working_set_size: usize,
+                maximum_working_set_size: usize,
+                active_process_limit: u32,
+                affinity: usize,
+                priority_class: u32,
+                scheduling_class: u32,
+            }
+
+            #[repr(C)]
+            struct IO_COUNTERS {
+                read_operation_count: u64,
+                write_operation_count: u64,
+                other_operation_count: u64,
+                read_transfer_count: u64,
+                write_transfer_count: u64,
+                other_transfer_count: u64,
+            }
+
+            #[repr(C)]
+            struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+                basic_limit_information: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+                io_info: IO_COUNTERS,
+                process_memory_limit: usize,
+                job_memory_limit: usize,
+                peak_process_memory_used: usize,
+                peak_job_memory_used: usize,
+            }
+
+            const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+            const JOB_OBJECT_EXTENDED_LIMIT_INFO_CLASS: i32 = 9;
+
+            let job = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+            if !job.is_null() {
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                SetInformationJobObject(
+                    job,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFO_CLASS,
+                    &info as *const _ as *const _,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                );
+                JOB_HANDLE = job;
+            }
+        });
+
+        if !JOB_HANDLE.is_null() {
+            extern "system" {
+                fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut std::ffi::c_void;
+                fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+                fn AssignProcessToJobObject(hJob: *mut std::ffi::c_void, hProcess: *mut std::ffi::c_void) -> i32;
+            }
+            let proc_handle = OpenProcess(0x1F0FFF, 0, pid);
+            if !proc_handle.is_null() {
+                AssignProcessToJobObject(JOB_HANDLE, proc_handle);
+                CloseHandle(proc_handle);
+            }
+        }
     }
 }

@@ -121,9 +121,9 @@ fn run_host_daemon(_args: CliArgs) {
             Ok(())
         })
         .on_window_event(move |window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 let win_label = window.label();
-                eprintln!("[kterm] Window '{}' destroyed. Cleaning up PTY sessions and layout state.", win_label);
+                eprintln!("[kterm] Window '{}' closing/destroyed. Cleaning up PTY sessions.", win_label);
 
                 let sessions = pty_manager_event.list_by_window(Some(win_label));
                 for s in sessions {
@@ -135,7 +135,7 @@ fn run_host_daemon(_args: CliArgs) {
                 let app = window.app_handle();
                 let remaining = app.webview_windows();
                 if remaining.is_empty() || (remaining.len() == 1 && remaining.contains_key(win_label)) {
-                    eprintln!("[kterm] Last window closed. Terminating background daemon and child PTY processes.");
+                    eprintln!("[kterm] Last window closed. Terminating background daemon.");
                     std::process::exit(0);
                 }
             }

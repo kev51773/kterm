@@ -1,11 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::sync::atomic::{AtomicU32, Ordering};
 use crate::daemon::AppState;
 use crate::pty::{LayoutNode, SplitDirection};
 use tauri::Manager;
 
-static YAML_TAB_COUNTER: AtomicU32 = AtomicU32::new(500);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YamlSessionSpec {
@@ -15,7 +13,7 @@ pub struct YamlSessionSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YamlWindowSpec {
-    pub id: String,
+    pub id: Option<String>,
     pub title: Option<String>,
 }
 
@@ -49,9 +47,6 @@ pub fn parse_yaml(content: &str) -> Result<YamlSessionSpec, String> {
 }
 
 pub fn validate_yaml(spec: &YamlSessionSpec) -> Result<(), String> {
-    if spec.window.id.trim().is_empty() {
-        return Err("Window id cannot be empty".to_string());
-    }
     if spec.tabs.is_empty() {
         return Err("YAML session spec must contain at least one tab".to_string());
     }
@@ -92,6 +87,22 @@ fn validate_profile(profile: &str) -> Result<(), String> {
         return Err(format!("Invalid profile '{}'. Must be one of: powershell, cmd, wsl, git-bash", profile));
     }
     Ok(())
+}
+
+pub fn generate_next_window_id(state: &AppState) -> String {
+    if is_window_untouched_initial(state, "win-1") {
+        return "win-1".to_string();
+    }
+    let titles = state.window_titles.lock().unwrap();
+    let layouts = state.window_layouts.lock().unwrap();
+    let mut count = 1;
+    loop {
+        let candidate = format!("win-{}", count);
+        if !titles.contains_key(&candidate) && !layouts.contains_key(&candidate) {
+            return candidate;
+        }
+        count += 1;
+    }
 }
 
 pub fn is_window_untouched_initial(state: &AppState, window_id: &str) -> bool {
@@ -148,9 +159,15 @@ pub fn apply_yaml_spec(
 ) -> Result<String, String> {
     validate_yaml(spec)?;
 
-    let base_id = window_override
-        .filter(|w| !w.trim().is_empty())
-        .unwrap_or(&spec.window.id);
+    let generated_win_id;
+    let base_id = if let Some(w) = window_override.filter(|w| !w.trim().is_empty()) {
+        w
+    } else if let Some(w) = spec.window.id.as_deref().filter(|w| !w.trim().is_empty()) {
+        w
+    } else {
+        generated_win_id = generate_next_window_id(state);
+        &generated_win_id
+    };
 
     let window_id = resolve_window_id(state, base_id, suffix, suffix_auto);
 
@@ -217,7 +234,7 @@ pub fn apply_yaml_spec(
         let root_tab_id = tab_spec
             .id
             .clone()
-            .unwrap_or_else(|| format!("tab-{}", YAML_TAB_COUNTER.fetch_add(1, Ordering::SeqCst)));
+            .unwrap_or_else(|| state.pty_manager.generate_next_tab_id_for_window(&window_id));
 
         let sess = state.pty_manager.spawn_with_cwd(
             root_tab_id.clone(),
@@ -283,7 +300,7 @@ fn apply_split_recursive(
     let new_tab_id = split_spec
         .id
         .clone()
-        .unwrap_or_else(|| format!("tab-{}", YAML_TAB_COUNTER.fetch_add(1, Ordering::SeqCst)));
+        .unwrap_or_else(|| state.pty_manager.generate_next_tab_id_for_window(window_id));
 
     let sess = state.pty_manager.spawn_with_cwd(
         new_tab_id.clone(),

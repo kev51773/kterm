@@ -51,7 +51,7 @@ pub fn export_yaml_layout(state: &AppState, window_id: &str) -> String {
 
     let spec = YamlSessionSpec {
         window: YamlWindowSpec {
-            id: window_id.to_string(),
+            id: Some(window_id.to_string()),
             title: win_title,
         },
         tabs,

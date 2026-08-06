@@ -20,7 +20,6 @@ use std::sync::Mutex;
 use tauri::{Manager, WebviewWindowBuilder};
 use tower_http::cors::{Any, CorsLayer};
 
-static TAB_COUNTER: AtomicU32 = AtomicU32::new(102);
 static WINDOW_COUNTER: AtomicU32 = AtomicU32::new(2);
 
 #[derive(Clone)]
@@ -269,7 +268,7 @@ async fn create_tab(
     let cols = payload.as_ref().and_then(|p| p.cols).unwrap_or(100);
     let rows = payload.as_ref().and_then(|p| p.rows).unwrap_or(30);
 
-    let tab_id = format!("tab-{}", TAB_COUNTER.fetch_add(1, Ordering::SeqCst));
+    let tab_id = state.pty_manager.generate_next_tab_id_for_window(&window_id);
     let session = state
         .pty_manager
         .spawn_with_size_and_cwd(tab_id.clone(), profile.clone(), window_id.clone(), cols, rows, None)
@@ -402,8 +401,13 @@ async fn close_window(
     state.cleanup_window(&window_id);
 
     if let Some(app) = &state.app_handle {
+        let remaining = app.webview_windows();
         if let Some(win) = app.get_webview_window(&window_id) {
             let _ = win.close();
+        }
+        if remaining.is_empty() || (remaining.len() == 1 && remaining.contains_key(&window_id)) {
+            eprintln!("[kterm daemon] Last window closed via HTTP request. Terminating process.");
+            std::process::exit(0);
         }
     }
     Ok(StatusCode::OK)
@@ -692,7 +696,7 @@ async fn split_tab(
         move_sess.id.clone()
     } else {
         let profile = req.profile.unwrap_or_else(|| target_session.profile.clone());
-        let tab_id = format!("tab-{}", TAB_COUNTER.fetch_add(1, Ordering::SeqCst));
+        let tab_id = state.pty_manager.generate_next_tab_id_for_window(&window_id);
         let _ = state
             .pty_manager
             .spawn(tab_id.clone(), profile, window_id.clone())
@@ -869,7 +873,15 @@ async fn apply_session(
     let is_suffix_auto = req.suffix_auto.unwrap_or(false);
 
     let win_override = req.window.as_deref();
-    let target_base_id = win_override.filter(|w| !w.trim().is_empty()).unwrap_or(&spec.window.id);
+    let generated_target_id;
+    let target_base_id = if let Some(w) = win_override.filter(|w| !w.trim().is_empty()) {
+        w
+    } else if let Some(w) = spec.window.id.as_deref().filter(|w| !w.trim().is_empty()) {
+        w
+    } else {
+        generated_target_id = crate::yaml::generate_next_window_id(&state);
+        &generated_target_id
+    };
 
     if is_dry_run {
         crate::yaml::validate_yaml(&spec).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
@@ -901,6 +913,7 @@ async fn apply_session(
             let _ = window.show();
             let _ = window.unminimize();
             let _ = window.set_focus();
+            let _ = window.eval("if (window.__triggerSyncTabs) window.__triggerSyncTabs();");
         }
     }
 
