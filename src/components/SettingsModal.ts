@@ -16,9 +16,41 @@ export interface AppConfig {
   };
 }
 
+function adjustHexBrightness(hex: string, factor: number): string {
+  let cleanHex = hex.trim().replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map((c) => c + c).join('');
+  }
+  let num = parseInt(cleanHex, 16);
+  if (isNaN(num)) return hex;
+  let r = Math.min(255, Math.max(0, Math.round(((num >> 16) & 0xff) * factor)));
+  let g = Math.min(255, Math.max(0, Math.round(((num >> 8) & 0xff) * factor)));
+  let b = Math.min(255, Math.max(0, Math.round((num & 0xff) * factor)));
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function renderColorInput(id: string, label: string, val: string): string {
+  let hexVal = val ? val.trim() : '#000000';
+  if (!/^#[0-9A-Fa-f]{6}$/.test(hexVal)) {
+    hexVal = '#000000';
+  }
+  return `
+    <div class="settings-group">
+      <label>${label}</label>
+      <div class="color-picker-row">
+        <input type="color" id="${id}-picker" value="${hexVal}" class="color-picker-swatch" title="Color Swatch" />
+        <input type="range" id="${id}-brightness" min="0" max="200" value="100" class="color-brightness-slider" title="Adjust Brightness" />
+        <input type="text" id="${id}" value="${val}" class="color-picker-text" />
+      </div>
+    </div>
+  `;
+}
+
 export class SettingsModal {
   private overlay: HTMLElement | null = null;
   private currentConfig: AppConfig | null = null;
+  private initialConfig: AppConfig | null = null;
+  private isSaved: boolean = false;
   private daemonUrl: string;
   private onSaveCallback: (config: AppConfig) => void;
 
@@ -29,11 +61,18 @@ export class SettingsModal {
 
   public async open() {
     if (this.overlay) return;
+    this.isSaved = false;
     await this.fetchConfig();
+    if (this.currentConfig) {
+      this.initialConfig = JSON.parse(JSON.stringify(this.currentConfig));
+    }
     this.render();
   }
 
   public close() {
+    if (!this.isSaved && this.initialConfig) {
+      this.onSaveCallback(this.initialConfig);
+    }
     if (this.overlay) {
       this.overlay.remove();
       this.overlay = null;
@@ -118,31 +157,70 @@ export class SettingsModal {
             <label>Terminal Padding (px)</label>
             <input type="number" id="cfg-padding" value="${this.currentConfig!.terminal_padding}" min="0" max="32" />
           </div>
-          <div class="settings-group">
-            <label>Background Color</label>
-            <input type="text" id="cfg-theme-bg" value="${this.currentConfig!.theme.background}" />
-          </div>
-          <div class="settings-group">
-            <label>Foreground Color</label>
-            <input type="text" id="cfg-theme-fg" value="${this.currentConfig!.theme.foreground}" />
-          </div>
-          <div class="settings-group">
-            <label>Highlight Color</label>
-            <input type="text" id="cfg-theme-highlight" value="${this.currentConfig!.theme.highlight}" />
-          </div>
-          <div class="settings-group">
-            <label>Title Bar Background</label>
-            <input type="text" id="cfg-theme-title-bar" value="${this.currentConfig!.theme.title_bar || '#21252b'}" />
-          </div>
-          <div class="settings-group">
-            <label>Active Tab Background</label>
-            <input type="text" id="cfg-theme-active-tab" value="${this.currentConfig!.theme.active_tab || '#0d0e11'}" />
-          </div>
-          <div class="settings-group">
-            <label>Inactive Tab Background</label>
-            <input type="text" id="cfg-theme-inactive-tab" value="${this.currentConfig!.theme.inactive_tab || '#181a1f'}" />
-          </div>
+          ${renderColorInput('cfg-theme-bg', 'Background Color', this.currentConfig!.theme.background)}
+          ${renderColorInput('cfg-theme-fg', 'Foreground Color', this.currentConfig!.theme.foreground)}
+          ${renderColorInput('cfg-theme-highlight', 'Highlight Color', this.currentConfig!.theme.highlight)}
+          ${renderColorInput('cfg-theme-title-bar', 'Title Bar Background', this.currentConfig!.theme.title_bar || '#21252b')}
+          ${renderColorInput('cfg-theme-active-tab', 'Active Tab Background', this.currentConfig!.theme.active_tab || '#0d0e11')}
+          ${renderColorInput('cfg-theme-inactive-tab', 'Inactive Tab Background', this.currentConfig!.theme.inactive_tab || '#181a1f')}
         `;
+        const applyLivePreview = () => {
+          if (!this.currentConfig) return;
+          const bg = (content.querySelector('#cfg-theme-bg') as HTMLInputElement | null)?.value;
+          const fg = (content.querySelector('#cfg-theme-fg') as HTMLInputElement | null)?.value;
+          const hl = (content.querySelector('#cfg-theme-highlight') as HTMLInputElement | null)?.value;
+          const tb = (content.querySelector('#cfg-theme-title-bar') as HTMLInputElement | null)?.value;
+          const at = (content.querySelector('#cfg-theme-active-tab') as HTMLInputElement | null)?.value;
+          const it = (content.querySelector('#cfg-theme-inactive-tab') as HTMLInputElement | null)?.value;
+
+          if (bg) this.currentConfig.theme.background = bg;
+          if (fg) this.currentConfig.theme.foreground = fg;
+          if (hl) this.currentConfig.theme.highlight = hl;
+          if (tb) this.currentConfig.theme.title_bar = tb;
+          if (at) this.currentConfig.theme.active_tab = at;
+          if (it) this.currentConfig.theme.inactive_tab = it;
+
+          this.onSaveCallback(this.currentConfig);
+        };
+
+        const baseColorMap = new Map<string, string>();
+        ['cfg-theme-bg', 'cfg-theme-fg', 'cfg-theme-highlight', 'cfg-theme-title-bar', 'cfg-theme-active-tab', 'cfg-theme-inactive-tab'].forEach((id) => {
+          const textEl = content.querySelector(`#${id}`) as HTMLInputElement | null;
+          const pickerEl = content.querySelector(`#${id}-picker`) as HTMLInputElement | null;
+          const sliderEl = content.querySelector(`#${id}-brightness`) as HTMLInputElement | null;
+
+          if (textEl && pickerEl && sliderEl) {
+            baseColorMap.set(id, textEl.value);
+
+            pickerEl.addEventListener('input', () => {
+              baseColorMap.set(id, pickerEl.value);
+              sliderEl.value = '100';
+              textEl.value = pickerEl.value;
+              applyLivePreview();
+            });
+
+            textEl.addEventListener('input', () => {
+              const val = textEl.value.trim();
+              if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                baseColorMap.set(id, val);
+                sliderEl.value = '100';
+                pickerEl.value = val;
+              }
+              applyLivePreview();
+            });
+
+            sliderEl.addEventListener('input', () => {
+              const base = baseColorMap.get(id) || textEl.value;
+              const factor = parseInt(sliderEl.value, 10) / 100;
+              const adjusted = adjustHexBrightness(base, factor);
+              textEl.value = adjusted;
+              if (/^#[0-9A-Fa-f]{6}$/.test(adjusted)) {
+                pickerEl.value = adjusted;
+              }
+              applyLivePreview();
+            });
+          }
+        });
       } else if (tabName === 'general') {
         content.innerHTML = `
           <div class="settings-group">
@@ -269,6 +347,7 @@ export class SettingsModal {
         body: JSON.stringify(this.currentConfig),
       });
       if (res.ok) {
+        this.isSaved = true;
         this.onSaveCallback(this.currentConfig);
         this.close();
       }

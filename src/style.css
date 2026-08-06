@@ -415,8 +415,8 @@ html, body {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: none;
   z-index: 10000;
   display: flex;
   align-items: center;
@@ -529,6 +529,49 @@ html, body {
   padding: 8px 10px;
   font-size: 13px;
   outline: none;
+  font-family: inherit;
+}
+
+.color-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-picker-swatch {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  border: 1px solid #3e4451 !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  cursor: pointer;
+}
+
+.color-picker-swatch::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-picker-swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.color-brightness-slider {
+  width: 80px !important;
+  height: 6px !important;
+  padding: 0 !important;
+  background: #282c34 !important;
+  border-radius: 3px !important;
+  accent-color: var(--highlight-color, #61afef);
+  cursor: pointer;
+}
+
+.color-picker-text {
+  flex: 1;
 }
 
 .settings-group input:focus,
