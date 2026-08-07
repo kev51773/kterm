@@ -70,6 +70,8 @@ function clearPaneHighlightDecorations(paneId: string) {
   }
 }
 
+let highlightFlashPhase = 0;
+
 function updatePaneHighlights(paneId: string) {
   const inst = tabsMap.get(paneId);
   if (!inst) return;
@@ -84,6 +86,9 @@ function updatePaneHighlights(paneId: string) {
 
   const buffer = inst.term.buffer.active;
   const createdDecs: Array<{ marker: IMarker; decoration: IDecoration }> = [];
+  const isPhaseA = highlightFlashPhase === 0;
+  const matchBg = isPhaseA ? '#f1c40f' : '#0044ff';
+  const matchFg = isPhaseA ? '#0033cc' : '#ffff00';
 
   for (let i = 0; i < buffer.length; i++) {
     const lineObj = buffer.getLine(i);
@@ -99,6 +104,7 @@ function updatePaneHighlights(paneId: string) {
       while ((match = regex.exec(str)) !== null) {
         const col = match.index;
         const width = match[0].length;
+        const matchedText = match[0];
         const markerOffset = i - (buffer.baseY + buffer.cursorY);
         const marker = inst.term.registerMarker(markerOffset);
         if (marker) {
@@ -106,10 +112,22 @@ function updatePaneHighlights(paneId: string) {
             marker,
             x: col,
             width,
-            backgroundColor: '#f1c40f',
-            overviewRulerOptions: { color: '#f1c40f', position: 'center' },
+            backgroundColor: matchBg,
+            overviewRulerOptions: { color: matchBg, position: 'center' },
           });
           if (decoration) {
+            decoration.onRender((el: HTMLElement) => {
+              el.textContent = matchedText;
+              el.style.color = matchFg;
+              el.style.backgroundColor = matchBg;
+              el.style.fontWeight = 'bold';
+              el.style.display = 'flex';
+              el.style.alignItems = 'center';
+              el.style.pointerEvents = 'none';
+              el.style.userSelect = 'none';
+              el.style.overflow = 'hidden';
+              el.style.whiteSpace = 'pre';
+            });
             createdDecs.push({ marker, decoration });
           }
         }
@@ -119,6 +137,25 @@ function updatePaneHighlights(paneId: string) {
 
   activePaneDecorationsMap.set(paneId, createdDecs);
 }
+
+setInterval(() => {
+  let hasAnyHighlights = false;
+  for (const words of paneHighlightsMap.values()) {
+    if (words && words.length > 0) {
+      hasAnyHighlights = true;
+      break;
+    }
+  }
+  if (!hasAnyHighlights) return;
+
+  highlightFlashPhase = (highlightFlashPhase + 1) % 2;
+
+  for (const [paneId, words] of paneHighlightsMap.entries()) {
+    if (words && words.length > 0) {
+      updatePaneHighlights(paneId);
+    }
+  }
+}, 600);
 
 function escapeHtml(str: string): string {
   return str
