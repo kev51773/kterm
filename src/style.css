@@ -376,10 +376,10 @@ html, body {
 /* Context Menu */
 .context-menu {
   position: fixed;
-  background: #1e2128;
-  border: 1px solid #3e4451;
+  background: var(--inactive-tab-bg, #1e2128);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
   padding: 4px 0;
   z-index: 9999;
   min-width: 180px;
@@ -388,27 +388,29 @@ html, body {
 .context-menu-item {
   padding: 6px 14px;
   font-size: 13px;
-  color: #abb2bf;
+  color: var(--inactive-tab-fg, #abb2bf);
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
 .context-menu-item:hover {
-  background: #2c313a;
-  color: #ffffff;
+  background: var(--tab-hover-bg, #2c313a);
+  color: var(--active-tab-fg, #ffffff);
 }
 
 .context-menu-shortcut {
   font-size: 11px;
-  color: #5c6370;
+  color: var(--inactive-tab-fg, #abb2bf);
+  opacity: 0.7;
   margin-left: 12px;
 }
 
 .context-menu-divider {
   height: 1px;
-  background: #3e4451;
+  background: rgba(255, 255, 255, 0.1);
   margin: 4px 0;
 }
 
@@ -431,33 +433,34 @@ html, body {
 .settings-modal {
   width: 680px;
   height: 480px;
-  background: #16181d;
-  border: 1px solid #2a2d3e;
+  background: var(--active-tab-bg, #0d0e11);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   pointer-events: auto;
+  color: var(--active-tab-fg, #ffffff);
 }
 
 .settings-modal-header {
   height: 40px;
-  background: #1e2128;
-  border-bottom: 1px solid #2a2d34;
+  background: var(--title-bar-bg, #21252b);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--active-tab-fg, #ffffff);
   font-size: 14px;
 }
 
 .settings-close-btn {
   background: transparent;
   border: none;
-  color: #9da5b4;
+  color: var(--inactive-tab-fg, #9da5b4);
   font-size: 16px;
   cursor: pointer;
   padding: 4px 8px;
@@ -477,8 +480,8 @@ html, body {
 
 .settings-sidebar {
   width: 130px;
-  background: #1e2128;
-  border-right: 1px solid #2a2d34;
+  background: var(--inactive-tab-bg, #181a1f);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
   padding: 8px 0;
   display: flex;
   flex-direction: column;
@@ -488,18 +491,18 @@ html, body {
 .settings-nav-item {
   padding: 8px 14px;
   font-size: 13px;
-  color: #9da5b4;
+  color: var(--inactive-tab-fg, #9da5b4);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
 }
 
 .settings-nav-item:hover {
-  background: #252932;
-  color: #ffffff;
+  background: var(--tab-hover-bg, #252932);
+  color: var(--active-tab-fg, #ffffff);
 }
 
 .settings-nav-item.active {
-  background: #0d0e11;
+  background: var(--active-tab-bg, #0d0e11);
   color: var(--highlight-color, #61afef);
   font-weight: 600;
   border-left: 3px solid var(--highlight-color, #61afef);
@@ -512,6 +515,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  background: var(--active-tab-bg, #0d0e11);
 }
 
 .settings-section-header {
@@ -522,7 +526,7 @@ html, body {
   color: var(--highlight-color, #61afef);
   margin-top: 8px;
   margin-bottom: 2px;
-  border-bottom: 1px solid #2a2d3e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 4px;
 }
 
@@ -534,16 +538,16 @@ html, body {
 
 .settings-group label {
   font-size: 12px;
-  color: #abb2bf;
+  color: var(--inactive-tab-fg, #abb2bf);
   font-weight: 500;
 }
 
 .settings-group input,
 .settings-group select {
-  background: #0d0e11;
-  border: 1px solid #3e4451;
+  background: var(--inactive-tab-bg, #0d0e11);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--active-tab-fg, #ffffff);
   padding: 8px 10px;
   font-size: 13px;
   outline: none;
@@ -563,7 +567,7 @@ html, body {
   width: 34px !important;
   height: 34px !important;
   padding: 0 !important;
-  border: 1px solid #3e4451 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
   border-radius: 4px !important;
   background: transparent !important;
   cursor: pointer;
@@ -582,7 +586,7 @@ html, body {
   width: 80px !important;
   height: 6px !important;
   padding: 0 !important;
-  background: #282c34 !important;
+  background: var(--inactive-tab-bg, #282c34) !important;
   border-radius: 3px !important;
   accent-color: var(--highlight-color, #61afef);
   cursor: pointer;
@@ -599,8 +603,8 @@ html, body {
 
 .settings-modal-footer {
   height: 48px;
-  background: #1e2128;
-  border-top: 1px solid #2a2d34;
+  background: var(--title-bar-bg, #21252b);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -620,13 +624,13 @@ html, body {
 }
 
 .settings-save-btn:hover {
-  background: #5294e2;
+  opacity: 0.9;
 }
 
 .settings-cancel-btn {
-  background: transparent;
-  color: #abb2bf;
-  border: 1px solid #3e4451;
+  background: var(--inactive-tab-bg, transparent);
+  color: var(--inactive-tab-fg, #abb2bf);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   padding: 6px 16px;
   border-radius: 4px;
   font-size: 13px;
@@ -634,8 +638,8 @@ html, body {
 }
 
 .settings-cancel-btn:hover {
-  background: #252932;
-  color: #ffffff;
+  background: var(--tab-hover-bg, #252932);
+  color: var(--active-tab-fg, #ffffff);
 }
 
 .keybindings-list {

@@ -74,7 +74,9 @@ export class SettingsModal {
 
   public close() {
     if (!this.isSaved && this.initialConfig) {
-      this.onSaveCallback(this.initialConfig);
+      const restoreConfig = this.initialConfig;
+      this.initialConfig = null;
+      this.onSaveCallback(restoreConfig);
     }
     if (this.overlay) {
       this.overlay.remove();
@@ -441,7 +443,11 @@ export class SettingsModal {
     if (bufferEl) this.currentConfig.ring_buffer_kb = parseInt(bufferEl.value, 10) || 256;
 
     this.isSaved = true;
-    this.onSaveCallback(this.currentConfig);
+    try {
+      this.onSaveCallback(this.currentConfig);
+    } catch (e) {
+      console.error('Error during onSaveCallback:', e);
+    }
     this.close();
 
     try {
