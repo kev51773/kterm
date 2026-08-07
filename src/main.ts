@@ -51,6 +51,9 @@ let activeAppConfig: AppConfig = {
 };
 
 const tabsListEl = document.getElementById('tabs-list') as HTMLElement;
+const tabsScrollContainer = document.getElementById('tabs-scroll-container') as HTMLElement;
+const tabScrollLeftBtn = document.getElementById('tab-scroll-left') as HTMLButtonElement;
+const tabScrollRightBtn = document.getElementById('tab-scroll-right') as HTMLButtonElement;
 const terminalContainerEl = document.getElementById('terminal-container') as HTMLElement;
 const addTabBtn = document.getElementById('add-tab-btn') as HTMLButtonElement;
 const tabDropdownBtn = document.getElementById('tab-dropdown-btn') as HTMLButtonElement;
@@ -68,10 +71,55 @@ const PROFILES = [
 
 // Window Dragging & Controls Setup
 const tabBarEl = document.getElementById('tab-bar') as HTMLElement;
+
+function checkTabOverflow() {
+  if (!tabsScrollContainer || !tabBarEl) return;
+  const isOverflowing = tabsScrollContainer.scrollWidth > tabsScrollContainer.clientWidth + 1;
+  tabBarEl.classList.toggle('has-overflow', isOverflowing);
+
+  if (tabScrollLeftBtn && tabScrollRightBtn) {
+    tabScrollLeftBtn.disabled = tabsScrollContainer.scrollLeft <= 0;
+    tabScrollRightBtn.disabled =
+      tabsScrollContainer.scrollLeft + tabsScrollContainer.clientWidth >=
+      tabsScrollContainer.scrollWidth - 1;
+  }
+}
+
+if (tabScrollLeftBtn && tabsScrollContainer) {
+  tabScrollLeftBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    tabsScrollContainer.scrollBy({ left: -150, behavior: 'smooth' });
+  });
+}
+
+if (tabScrollRightBtn && tabsScrollContainer) {
+  tabScrollRightBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    tabsScrollContainer.scrollBy({ left: 150, behavior: 'smooth' });
+  });
+}
+
+if (tabsScrollContainer) {
+  tabsScrollContainer.addEventListener('scroll', checkTabOverflow, { passive: true });
+}
+
+if (typeof ResizeObserver !== 'undefined') {
+  const tabResizeObserver = new ResizeObserver(() => {
+    checkTabOverflow();
+  });
+  if (tabsScrollContainer) tabResizeObserver.observe(tabsScrollContainer);
+  if (tabsListEl) tabResizeObserver.observe(tabsListEl);
+}
+
 if (tabBarEl) {
   tabBarEl.addEventListener('dblclick', async (e: MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target === tabBarEl || target.id === 'tabs-list') {
+    if (
+      target === tabBarEl ||
+      target.id === 'tabs-list' ||
+      target.id === 'tabs-scroll-container' ||
+      target.id === 'titlebar-drag-spacer'
+    ) {
       try {
         await getCurrentWindow().toggleMaximize();
       } catch (err) {
@@ -718,6 +766,12 @@ function renderTabBarHeaders() {
     });
 
     tabsListEl.appendChild(tabEl);
+  }
+
+  checkTabOverflow();
+  const activeTabEl = tabsListEl.querySelector('.tab-item.active');
+  if (activeTabEl) {
+    activeTabEl.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
   }
 }
 

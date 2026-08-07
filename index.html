@@ -9,7 +9,19 @@
   <body>
     <div id="app">
       <div id="tab-bar" data-tauri-drag-region>
-        <div id="tabs-list" data-tauri-drag-region></div>
+        <button id="tab-scroll-left" class="tab-scroll-btn titlebar-btn" data-tauri-drag-region="false" title="Scroll Left" aria-label="Scroll Tabs Left">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M10.47 12.53a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 0 1 0-1.06l4-4a.75.75 0 0 1 1.06 1.06L6.81 8l3.66 3.47a.75.75 0 0 1 0 1.06z"/>
+          </svg>
+        </button>
+        <div id="tabs-scroll-container" data-tauri-drag-region>
+          <div id="tabs-list" data-tauri-drag-region></div>
+        </div>
+        <button id="tab-scroll-right" class="tab-scroll-btn titlebar-btn" data-tauri-drag-region="false" title="Scroll Right" aria-label="Scroll Tabs Right">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M5.53 12.53a.75.75 0 0 0 1.06 0l4-4a.75.75 0 0 0 0-1.06l-4-4a.75.75 0 0 0-1.06 1.06L9.19 8l-3.66 3.47a.75.75 0 0 0 0 1.06z"/>
+          </svg>
+        </button>
         <div class="tab-add-group" data-tauri-drag-region="false">
           <button id="add-tab-btn" class="titlebar-btn" data-tauri-drag-region="false" title="New Tab">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -22,6 +34,7 @@
             </svg>
           </button>
         </div>
+        <div id="titlebar-drag-spacer" data-tauri-drag-region></div>
         <div id="window-controls" data-tauri-drag-region="false">
           <button id="win-min-btn" data-tauri-drag-region="false" title="Minimize">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
