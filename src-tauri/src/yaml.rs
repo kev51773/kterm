@@ -221,6 +221,9 @@ pub fn apply_yaml_spec(
         }
     }
 
+    let mut layouts = state.window_layouts.lock().unwrap();
+    let win_layouts = layouts.entry(window_id.clone()).or_insert_with(Vec::new);
+
     for tab_spec in &spec.tabs {
         let root_tab_id = tab_spec
             .id
@@ -263,11 +266,7 @@ pub fn apply_yaml_spec(
             }
         }
 
-        let mut layouts = state.window_layouts.lock().unwrap();
-        layouts
-            .entry(window_id.clone())
-            .or_insert_with(Vec::new)
-            .push(root_node);
+        win_layouts.push(root_node);
     }
 
     Ok(window_id)
