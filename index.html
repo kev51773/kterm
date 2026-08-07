@@ -11,15 +11,33 @@
       <div id="tab-bar" data-tauri-drag-region>
         <div id="tabs-list" data-tauri-drag-region></div>
         <div class="tab-add-group" data-tauri-drag-region="false">
-          <button id="add-tab-btn" data-tauri-drag-region="false" title="New Tab (PowerShell)">+</button>
-          <button id="tab-dropdown-btn" data-tauri-drag-region="false" title="Select Profile">⌄</button>
+          <button id="add-tab-btn" class="titlebar-btn" data-tauri-drag-region="false" title="New Tab">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z"/>
+            </svg>
+          </button>
+          <button id="tab-dropdown-btn" class="titlebar-btn" data-tauri-drag-region="false" title="Menu">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M4.47 6.47a.75.75 0 0 1 1.06 0L8 8.94l2.47-2.47a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 0-1.06z"/>
+            </svg>
+          </button>
         </div>
-        <button id="export-script-btn" data-tauri-drag-region="false" title="Export Layout Script">&#x2193;</button>
-        <button id="settings-btn" data-tauri-drag-region="false" title="Settings (Ctrl+,)">&#x2699;</button>
         <div id="window-controls" data-tauri-drag-region="false">
-          <button id="win-min-btn" data-tauri-drag-region="false" title="Minimize">&#x2500;</button>
-          <button id="win-max-btn" data-tauri-drag-region="false" title="Maximize / Restore">&#x25A1;</button>
-          <button id="win-close-btn" data-tauri-drag-region="false" title="Close">&#x2715;</button>
+          <button id="win-min-btn" data-tauri-drag-region="false" title="Minimize">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
+              <line x1="0" y1="5" x2="10" y2="5" />
+            </svg>
+          </button>
+          <button id="win-max-btn" data-tauri-drag-region="false" title="Maximize / Restore">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="0.6" y="0.6" width="8.8" height="8.8" />
+            </svg>
+          </button>
+          <button id="win-close-btn" data-tauri-drag-region="false" title="Close">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
+              <path d="M1 1L9 9M9 1L1 9" />
+            </svg>
+          </button>
         </div>
       </div>
       <div id="terminal-container"></div>

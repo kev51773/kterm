@@ -272,17 +272,47 @@ const profileDropdownEl = document.createElement('div');
 profileDropdownEl.className = 'profile-dropdown-menu';
 profileDropdownEl.style.display = 'none';
 
-PROFILES.forEach(({ id, label }) => {
-  const item = document.createElement('div');
-  item.className = 'profile-dropdown-item';
-  item.textContent = label;
-  item.addEventListener('click', (e) => {
+function renderProfileDropdownMenu() {
+  profileDropdownEl.innerHTML = '';
+
+  PROFILES.forEach(({ id, label }) => {
+    const item = document.createElement('div');
+    item.className = 'profile-dropdown-item';
+    item.textContent = label;
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      profileDropdownEl.style.display = 'none';
+      spawnTabWithProfile(id);
+    });
+    profileDropdownEl.appendChild(item);
+  });
+
+  const divider = document.createElement('div');
+  divider.className = 'context-menu-divider';
+  profileDropdownEl.appendChild(divider);
+
+  const exportItem = document.createElement('div');
+  exportItem.className = 'profile-dropdown-item';
+  exportItem.innerHTML = `Export Layout...`;
+  exportItem.addEventListener('click', (e) => {
     e.stopPropagation();
     profileDropdownEl.style.display = 'none';
-    spawnTabWithProfile(id);
+    triggerExportSave();
   });
-  profileDropdownEl.appendChild(item);
-});
+  profileDropdownEl.appendChild(exportItem);
+
+  const settingsItem = document.createElement('div');
+  settingsItem.className = 'profile-dropdown-item';
+  settingsItem.innerHTML = `Settings <span class="context-menu-shortcut">Ctrl+,</span>`;
+  settingsItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    profileDropdownEl.style.display = 'none';
+    settingsModal.open();
+  });
+  profileDropdownEl.appendChild(settingsItem);
+}
+
+renderProfileDropdownMenu();
 document.body.appendChild(profileDropdownEl);
 
 // Context Menu Element
@@ -654,9 +684,10 @@ function renderTabBarHeaders() {
       tabEl.style.borderColor = tabInst.color;
     }
 
-    const closeEl = document.createElement('span');
-    closeEl.className = 'tab-close';
-    closeEl.innerHTML = '&times;';
+    const closeEl = document.createElement('button');
+    closeEl.className = 'tab-close-btn';
+    closeEl.setAttribute('title', 'Close Tab');
+    closeEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>`;
     closeEl.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       try {
