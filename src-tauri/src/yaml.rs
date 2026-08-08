@@ -205,6 +205,7 @@ pub fn apply_yaml_spec(
             let _ = existing_window.set_focus();
         } else {
             use tauri::WebviewWindowBuilder;
+            let (default_w, default_h) = crate::config::AppConfig::load().get_default_window_size();
             let builder = WebviewWindowBuilder::new(
                 app,
                 &window_id,
@@ -212,7 +213,7 @@ pub fn apply_yaml_spec(
             )
             .title(&formatted_title)
             .decorations(false)
-            .inner_size(1172.0, 647.0);
+            .inner_size(default_w, default_h);
 
             if let Ok(w) = builder.build() {
                 let _ = w.show();

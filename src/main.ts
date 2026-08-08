@@ -559,10 +559,16 @@ async function loadInitialConfig() {
 }
 
 function getContainerGridDimensions() {
+  if (activeAppConfig.default_cols && activeAppConfig.default_rows) {
+    return {
+      cols: activeAppConfig.default_cols,
+      rows: activeAppConfig.default_rows,
+    };
+  }
   const width = terminalContainerEl.clientWidth || 800;
   const height = terminalContainerEl.clientHeight || 500;
-  const fontWidth = 9;
-  const fontHeight = 17;
+  const fontWidth = 8.42;
+  const fontHeight = 17.0;
   const cols = Math.max(20, Math.floor((width - 16) / fontWidth));
   const rows = Math.max(5, Math.floor((height - 16) / fontHeight));
   return { cols, rows };
@@ -993,9 +999,9 @@ function connectWebSocket(instance: TabInstance) {
   instance.ws = ws;
 
   ws.onopen = () => {
-    instance.fitAddon.fit();
-    const cols = instance.term.cols || 120;
-    const rows = instance.term.rows || 30;
+    const cols = activeAppConfig.default_cols || 120;
+    const rows = activeAppConfig.default_rows || 30;
+    instance.term.resize(cols, rows);
     ws.send(JSON.stringify({ type: 'resize', cols, rows }));
   };
 

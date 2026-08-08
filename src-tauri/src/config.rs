@@ -130,6 +130,17 @@ impl AppConfig {
         cfg
     }
 
+    pub fn get_default_window_size(&self) -> (f64, f64) {
+        let cols = if self.default_cols > 0 { self.default_cols as f64 } else { 120.0 };
+        let rows = if self.default_rows > 0 { self.default_rows as f64 } else { 30.0 };
+        let cell_w = 8.42;
+        let cell_h = 17.0;
+        let pad = (self.terminal_padding as f64) * 2.0;
+        let w = (cols * cell_w + 16.0 + pad + 0.5).ceil();
+        let h = (rows * cell_h + 41.0 + pad + 0.5).ceil();
+        (w, h)
+    }
+
     pub fn save(&self) -> Result<(), String> {
         let path = Self::get_config_path();
         if let Some(parent) = path.parent() {

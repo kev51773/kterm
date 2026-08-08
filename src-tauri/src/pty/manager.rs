@@ -137,7 +137,7 @@ impl PtyManager {
         profile: String,
         window_id: String,
     ) -> Result<Arc<PtySession>, String> {
-        self.spawn_with_size_and_cwd(id, profile, window_id, 100, 30, None)
+        self.spawn_with_cwd(id, profile, window_id, None)
     }
 
     pub fn spawn_with_cwd(
@@ -147,7 +147,10 @@ impl PtyManager {
         window_id: String,
         cwd: Option<&str>,
     ) -> Result<Arc<PtySession>, String> {
-        self.spawn_with_size_and_cwd(id, profile, window_id, 100, 30, cwd)
+        let cfg = crate::config::AppConfig::load();
+        let cols = if cfg.default_cols > 0 { cfg.default_cols } else { 120 };
+        let rows = if cfg.default_rows > 0 { cfg.default_rows } else { 30 };
+        self.spawn_with_size_and_cwd(id, profile, window_id, cols, rows, cwd)
     }
 
     pub fn generate_next_tab_id_for_window(&self, window_id: &str) -> String {

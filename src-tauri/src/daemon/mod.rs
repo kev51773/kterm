@@ -558,13 +558,14 @@ async fn create_window(
 
         let window_title = format!("kterm.exe - A scriptable terminal - {}", label);
 
+        let (default_w, default_h) = crate::config::AppConfig::load().get_default_window_size();
         let builder = WebviewWindowBuilder::new(
             app,
             &label,
             tauri::WebviewUrl::App(format!("index.html?window={}", label).into()),
         )
         .title(&window_title)
-        .inner_size(1172.0, 647.0);
+        .inner_size(default_w, default_h);
 
         let window = builder
             .build()

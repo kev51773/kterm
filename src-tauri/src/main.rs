@@ -91,15 +91,20 @@ fn run_host_daemon(_args: CliArgs) {
             window_titles.lock().unwrap().remove("win-1");
             window_layouts.lock().unwrap().remove("win-1");
 
+            let cfg = crate::config::AppConfig::load();
+            let (default_w, default_h) = cfg.get_default_window_size();
+
             if let Some(window) = app.get_webview_window("win-1") {
                 eprintln!("[kterm host] Primary window 'win-1' initialized");
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
+                let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: default_w, height: default_h }));
                 let _ = window.show();
                 let _ = window.center();
                 let _ = window.set_focus();
             } else if let Some(window) = app.get_webview_window("main") {
                 eprintln!("[kterm host] Window 'main' fallback initialized");
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
+                let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: default_w, height: default_h }));
                 let _ = window.show();
                 let _ = window.center();
                 let _ = window.set_focus();
