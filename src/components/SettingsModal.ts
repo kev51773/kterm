@@ -330,7 +330,8 @@ export class SettingsModal {
       } else if (tabName === 'keybindings') {
         content.innerHTML = `
           <div class="keybindings-list">
-            <div class="keybinding-row"><span>New Tab (Active Shell)</span><span class="keybinding-key">Ctrl + Shift + T</span></div>
+            <div class="keybinding-row"><span>New Tab (Default Shell)</span><span class="keybinding-key">Ctrl + Shift + +</span></div>
+            <div class="keybinding-row"><span>Close Current Tab</span><span class="keybinding-key">Ctrl + Shift + -</span></div>
             <div class="keybinding-row"><span>Cycle Tabs Forward</span><span class="keybinding-key">Ctrl + Tab</span></div>
             <div class="keybinding-row"><span>Cycle Tabs Backward</span><span class="keybinding-key">Ctrl + Shift + Tab</span></div>
             <div class="keybinding-row"><span>Jump to Tab 1..9</span><span class="keybinding-key">Ctrl + Shift + 1..9</span></div>

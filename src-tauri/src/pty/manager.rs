@@ -14,6 +14,8 @@ pub struct PtySession {
     pub title: Arc<Mutex<String>>,
     pub badge: Arc<Mutex<Option<String>>>,
     pub color: Arc<Mutex<Option<String>>>,
+    pub cols: Arc<Mutex<u16>>,
+    pub rows: Arc<Mutex<u16>>,
     #[allow(dead_code)]
     pub is_dead: Arc<Mutex<bool>>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -30,6 +32,8 @@ pub struct PtySession {
 impl PtySession {
     pub fn resize(&self, rows: u16, cols: u16) {
         if rows > 0 && cols > 0 {
+            *self.cols.lock().unwrap() = cols;
+            *self.rows.lock().unwrap() = rows;
             let _ = self._master.lock().unwrap().resize(PtySize {
                 rows,
                 cols,
@@ -186,7 +190,7 @@ impl PtyManager {
         let pair = pty_system
             .openpty(PtySize {
                 rows: if rows > 0 { rows } else { 30 },
-                cols: if cols > 0 { cols } else { 100 },
+                cols: if cols > 0 { cols } else { 120 },
                 pixel_width: 0,
                 pixel_height: 0,
             })
@@ -324,7 +328,7 @@ impl PtyManager {
             }
         });
 
-        let default_title = format!("{} ({})", profile, id);
+        let default_title = profile.clone();
         let session = Arc::new(PtySession {
             id: id.clone(),
             pid,
@@ -333,6 +337,8 @@ impl PtyManager {
             title: Arc::new(Mutex::new(default_title)),
             badge: Arc::new(Mutex::new(None)),
             color: Arc::new(Mutex::new(None)),
+            cols: Arc::new(Mutex::new(cols)),
+            rows: Arc::new(Mutex::new(rows)),
             is_dead,
             writer,
             output_buffer,

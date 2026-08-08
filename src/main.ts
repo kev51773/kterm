@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 import { renderLayoutTree, LayoutNode } from './components/SplitGrid';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { SettingsModal, AppConfig } from './components/SettingsModal';
 
 const DAEMON_URL = 'http://127.0.0.1:9999';
@@ -839,12 +839,22 @@ function createTabLocal(tabData: TabData) {
         return false;
       }
 
-      // New Tab with Active Profile (Ctrl+Shift+T)
-      if (isCtrl && isShift && e.code === 'KeyT') {
+      // New Tab with Default Shell (Ctrl+Shift++)
+      if (isCtrl && isShift && (e.code === 'Equal' || e.key === '+' || e.code === 'NumpadAdd')) {
         e.preventDefault();
         e.stopImmediatePropagation();
         if (!e.repeat) {
           spawnDefaultTab();
+        }
+        return false;
+      }
+
+      // Close Current Tab (Ctrl+Shift+-)
+      if (isCtrl && isShift && (e.code === 'Minus' || e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!e.repeat && activeTabId) {
+          closeTab(activeTabId);
         }
         return false;
       }
@@ -1176,10 +1186,51 @@ function renderActiveLayout() {
           instance.fitAddon.fit();
         }
       }
+      adjustWindowForGrid(120, 30);
       if (activePaneId) {
         tabsMap.get(activePaneId)?.term.focus();
       }
     });
+  }
+}
+
+let hasAdjustedWindowSize = false;
+
+async function adjustWindowForGrid(targetCols: number = 120, targetRows: number = 30): Promise<void> {
+  if (hasAdjustedWindowSize) return;
+
+  const firstInstance = Array.from(tabsMap.values())[0];
+  if (!firstInstance || !firstInstance.term || !firstInstance.term.element) return;
+
+  const core = (firstInstance.term as any)._core;
+  let charWidth = 9.0;
+  let charHeight = 18.0;
+
+  if (core && core._renderService && core._renderService.dimensions) {
+    const cssCell = core._renderService.dimensions.css.cell;
+    if (cssCell && cssCell.width > 0 && cssCell.height > 0) {
+      charWidth = cssCell.width;
+      charHeight = cssCell.height;
+    }
+  }
+
+  const padding = activeAppConfig.terminal_padding || 8;
+  // Account for tabbar (41px), wrapper padding, borders (4px), and scrollbar safety margin (12px)
+  const neededWidth = Math.ceil(targetCols * charWidth + (padding * 2) + 16);
+  const neededHeight = Math.ceil(targetRows * charHeight + 41 + (padding * 2));
+
+  try {
+    const appWindow = getCurrentWindow();
+    await appWindow.setSize(new LogicalSize(neededWidth, neededHeight));
+    hasAdjustedWindowSize = true;
+
+    setTimeout(() => {
+      for (const instance of tabsMap.values()) {
+        instance.fitAddon.fit();
+      }
+    }, 50);
+  } catch (e) {
+    console.warn('Could not set window size via Tauri API:', e);
   }
 }
 
@@ -1579,10 +1630,10 @@ function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPan
 // Tab Header Context Menu (New Tab, Rename, Close)
 function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
   contextMenuEl.innerHTML = `
-    <div class="context-menu-item" id="ctx-tab-new">New Tab <span class="context-menu-shortcut">Ctrl+Shift+T</span></div>
+    <div class="context-menu-item" id="ctx-tab-new">New Tab (Default Shell) <span class="context-menu-shortcut">Ctrl+Shift++</span></div>
     <div class="context-menu-item" id="ctx-tab-rename">Rename</div>
     <div class="context-menu-divider"></div>
-    <div class="context-menu-item" id="ctx-tab-close">Close Tab</div>
+    <div class="context-menu-item" id="ctx-tab-close">Close Tab <span class="context-menu-shortcut">Ctrl+Shift+-</span></div>
   `;
 
   positionContextMenu(x, y);
@@ -1702,10 +1753,19 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
-  // New Tab with Active Profile (Ctrl+Shift+T)
-  if (isCtrl && isShift && e.code === 'KeyT') {
+  // New Tab with Default Shell (Ctrl+Shift++)
+  if (isCtrl && isShift && (e.code === 'Equal' || e.key === '+' || e.code === 'NumpadAdd')) {
     e.preventDefault();
     spawnDefaultTab();
+    return;
+  }
+
+  // Close Current Tab (Ctrl+Shift+-)
+  if (isCtrl && isShift && (e.code === 'Minus' || e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract')) {
+    e.preventDefault();
+    if (activeTabId) {
+      closeTab(activeTabId);
+    }
     return;
   }
 

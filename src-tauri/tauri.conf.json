@@ -15,8 +15,8 @@
       {
         "label": "win-1",
         "title": "kterm.exe - A scriptable terminal - win-1",
-        "width": 1000,
-        "height": 650,
+        "width": 1172,
+        "height": 647,
         "resizable": true,
         "visible": false,
         "focus": true,

@@ -212,7 +212,7 @@ pub fn apply_yaml_spec(
             )
             .title(&formatted_title)
             .decorations(false)
-            .inner_size(1000.0, 650.0);
+            .inner_size(1172.0, 647.0);
 
             if let Ok(w) = builder.build() {
                 let _ = w.show();

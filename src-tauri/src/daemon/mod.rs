@@ -39,6 +39,8 @@ pub struct TabInfo {
     pub title: String,
     pub badge: Option<String>,
     pub color: Option<String>,
+    pub cols: u16,
+    pub rows: u16,
 }
 
 #[derive(Deserialize)]
@@ -243,6 +245,8 @@ async fn list_tabs(
                 title,
                 badge,
                 color,
+                cols: *s.cols.lock().unwrap(),
+                rows: *s.rows.lock().unwrap(),
             }
         })
         .collect();
@@ -287,6 +291,9 @@ async fn create_tab(
         });
     }
 
+    let cols = *session.cols.lock().unwrap();
+    let rows = *session.rows.lock().unwrap();
+
     Ok(Json(TabInfo {
         id: session.id.clone(),
         pid: session.pid,
@@ -295,6 +302,8 @@ async fn create_tab(
         title,
         badge,
         color,
+        cols,
+        rows,
     }))
 }
 
@@ -554,7 +563,7 @@ async fn create_window(
             tauri::WebviewUrl::App(format!("index.html?window={}", label).into()),
         )
         .title(&window_title)
-        .inner_size(900.0, 600.0);
+        .inner_size(1172.0, 647.0);
 
         let window = builder
             .build()
