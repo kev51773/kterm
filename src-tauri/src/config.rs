@@ -71,9 +71,20 @@ impl Default for ThemeConfig {
     }
 }
 
+fn default_cols() -> u16 {
+    120
+}
+fn default_rows() -> u16 {
+    30
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub default_profile: String,
+    #[serde(default = "default_cols")]
+    pub default_cols: u16,
+    #[serde(default = "default_rows")]
+    pub default_rows: u16,
     pub ring_buffer_kb: usize,
     pub terminal_padding: u32,
     pub font: FontConfig,
@@ -84,6 +95,8 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             default_profile: "powershell".to_string(),
+            default_cols: 120,
+            default_rows: 30,
             ring_buffer_kb: 256,
             terminal_padding: 8,
             font: FontConfig::default(),

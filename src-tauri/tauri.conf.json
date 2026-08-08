@@ -18,7 +18,7 @@
         "width": 1172,
         "height": 647,
         "resizable": true,
-        "visible": false,
+        "visible": true,
         "focus": true,
         "center": true,
         "decorations": false,

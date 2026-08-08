@@ -1,5 +1,7 @@
 export interface AppConfig {
   default_profile: string;
+  default_cols?: number;
+  default_rows?: number;
   ring_buffer_kb: number;
   terminal_padding: number;
   font: {
@@ -94,6 +96,8 @@ export class SettingsModal {
       console.error('Failed to fetch config:', e);
       this.currentConfig = {
         default_profile: 'powershell',
+        default_cols: 120,
+        default_rows: 30,
         ring_buffer_kb: 256,
         terminal_padding: 8,
         font: { family: 'Consolas, "Courier New", monospace', size: 14 },
@@ -321,12 +325,33 @@ export class SettingsModal {
               <option value="wsl" ${this.currentConfig!.default_profile === 'wsl' ? 'selected' : ''}>WSL</option>
               <option value="git-bash" ${this.currentConfig!.default_profile === 'git-bash' ? 'selected' : ''}>Git Bash</option>
             </select>
+          <div class="settings-group">
+            <label>Default Grid Columns (Width)</label>
+            <input type="number" id="cfg-default-cols" value="${this.currentConfig!.default_cols || 120}" min="40" max="300" />
+          </div>
+          <div class="settings-group">
+            <label>Default Grid Rows (Height)</label>
+            <input type="number" id="cfg-default-rows" value="${this.currentConfig!.default_rows || 30}" min="10" max="150" />
           </div>
           <div class="settings-group">
             <label>Ring Buffer Capacity (KB per tab)</label>
             <input type="number" id="cfg-ring-buffer" value="${this.currentConfig!.ring_buffer_kb}" min="64" max="4096" step="64" />
           </div>
         `;
+        const colsIn = content.querySelector('#cfg-default-cols') as HTMLInputElement | null;
+        if (colsIn) {
+          colsIn.addEventListener('input', () => {
+            const v = parseInt(colsIn.value, 10);
+            if (!isNaN(v) && v > 0) this.currentConfig!.default_cols = v;
+          });
+        }
+        const rowsIn = content.querySelector('#cfg-default-rows') as HTMLInputElement | null;
+        if (rowsIn) {
+          rowsIn.addEventListener('input', () => {
+            const v = parseInt(rowsIn.value, 10);
+            if (!isNaN(v) && v > 0) this.currentConfig!.default_rows = v;
+          });
+        }
       } else if (tabName === 'keybindings') {
         content.innerHTML = `
           <div class="keybindings-list">
@@ -439,6 +464,12 @@ export class SettingsModal {
 
     const profileEl = document.getElementById('cfg-default-profile') as HTMLSelectElement | null;
     if (profileEl) this.currentConfig.default_profile = profileEl.value;
+
+    const colsEl = document.getElementById('cfg-default-cols') as HTMLInputElement | null;
+    if (colsEl) this.currentConfig.default_cols = parseInt(colsEl.value, 10) || 120;
+
+    const rowsEl = document.getElementById('cfg-default-rows') as HTMLInputElement | null;
+    if (rowsEl) this.currentConfig.default_rows = parseInt(rowsEl.value, 10) || 30;
 
     const bufferEl = document.getElementById('cfg-ring-buffer') as HTMLInputElement | null;
     if (bufferEl) this.currentConfig.ring_buffer_kb = parseInt(bufferEl.value, 10) || 256;

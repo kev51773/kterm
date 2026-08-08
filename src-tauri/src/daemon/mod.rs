@@ -176,6 +176,7 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/windows/title", post(set_window_title))
         .route("/windows/close", post(close_window))
         .route("/windows/show", post(show_window))
+        .route("/windows/size", post(resize_window))
         .route("/tabs/:id/ws", get(ws_handler))
         .route("/apply", post(apply_session))
         .route("/export-layout", get(export_layout_endpoint))
@@ -1117,6 +1118,32 @@ async fn show_window(
             let _ = window.show();
             let _ = window.unminimize();
             let _ = window.set_focus();
+            return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
+        }
+    }
+    (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Window not found" })))
+}
+
+#[derive(Deserialize)]
+pub struct ResizeWindowRequest {
+    pub window: Option<String>,
+    pub width: f64,
+    pub height: f64,
+}
+
+async fn resize_window(
+    State(state): State<AppState>,
+    Json(payload): Json<ResizeWindowRequest>,
+) -> impl IntoResponse {
+    let win_id = payload.window.as_deref().unwrap_or("win-1");
+    if let Some(app_handle) = &state.app_handle {
+        if let Some(window) = app_handle.get_webview_window(win_id) {
+            let _ = window.show();
+            let size = tauri::Size::Logical(tauri::LogicalSize {
+                width: payload.width,
+                height: payload.height,
+            });
+            let _ = window.set_size(size);
             return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
         }
     }

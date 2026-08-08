@@ -5,7 +5,8 @@ import '@xterm/xterm/css/xterm.css';
 import { renderLayoutTree, LayoutNode } from './components/SplitGrid';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalSize } from '@tauri-apps/api/dpi';
 import { SettingsModal, AppConfig } from './components/SettingsModal';
 
 const DAEMON_URL = 'http://127.0.0.1:9999';
@@ -339,6 +340,8 @@ let activePaneId: string | null = null;
 let currentLayouts: LayoutNode[] = [];
 let activeAppConfig: AppConfig = {
   default_profile: 'powershell',
+  default_cols: 120,
+  default_rows: 30,
   ring_buffer_kb: 256,
   terminal_padding: 8,
   font: { family: 'Consolas, "Courier New", monospace', size: 14 },
@@ -538,6 +541,9 @@ function applyAppConfig(config: AppConfig) {
   document.querySelectorAll<HTMLElement>('.split-pane-wrapper').forEach((el) => {
     el.style.padding = `${config.terminal_padding}px`;
   });
+  if (config.default_cols && config.default_rows) {
+    adjustWindowForGrid(config.default_cols, config.default_rows, true);
+  }
 }
 
 async function loadInitialConfig() {
@@ -1186,7 +1192,7 @@ function renderActiveLayout() {
           instance.fitAddon.fit();
         }
       }
-      adjustWindowForGrid(120, 30);
+      adjustWindowForGrid(activeAppConfig.default_cols || 120, activeAppConfig.default_rows || 30);
       if (activePaneId) {
         tabsMap.get(activePaneId)?.term.focus();
       }
@@ -1194,44 +1200,85 @@ function renderActiveLayout() {
   }
 }
 
-let hasAdjustedWindowSize = false;
-
-async function adjustWindowForGrid(targetCols: number = 120, targetRows: number = 30): Promise<void> {
-  if (hasAdjustedWindowSize) return;
-
+function getXtermCellDimensions(): { width: number; height: number } {
   const firstInstance = Array.from(tabsMap.values())[0];
-  if (!firstInstance || !firstInstance.term || !firstInstance.term.element) return;
-
-  const core = (firstInstance.term as any)._core;
-  let charWidth = 9.0;
-  let charHeight = 18.0;
-
-  if (core && core._renderService && core._renderService.dimensions) {
-    const cssCell = core._renderService.dimensions.css.cell;
-    if (cssCell && cssCell.width > 0 && cssCell.height > 0) {
-      charWidth = cssCell.width;
-      charHeight = cssCell.height;
+  if (firstInstance && firstInstance.term) {
+    const core = (firstInstance.term as any)._core;
+    if (core && core._renderService && core._renderService.dimensions) {
+      const cssCell = core._renderService.dimensions.css.cell;
+      if (cssCell && cssCell.width > 0 && cssCell.height > 0) {
+        return { width: cssCell.width, height: cssCell.height };
+      }
     }
   }
 
+  const dummyContainer = document.createElement('div');
+  dummyContainer.style.position = 'absolute';
+  dummyContainer.style.visibility = 'hidden';
+  dummyContainer.style.width = '200px';
+  dummyContainer.style.height = '200px';
+  document.body.appendChild(dummyContainer);
+
+  const dummyTerm = new Terminal({
+    fontFamily: activeAppConfig.font?.family || 'Consolas, monospace',
+    fontSize: activeAppConfig.font?.size || 14,
+  });
+  dummyTerm.open(dummyContainer);
+
+  let width = 8.42;
+  let height = 17.0;
+  const core = (dummyTerm as any)._core;
+  if (core && core._renderService && core._renderService.dimensions) {
+    const cssCell = core._renderService.dimensions.css.cell;
+    if (cssCell && cssCell.width > 0 && cssCell.height > 0) {
+      width = cssCell.width;
+      height = cssCell.height;
+    }
+  }
+
+  dummyTerm.dispose();
+  document.body.removeChild(dummyContainer);
+  return { width, height };
+}
+
+let hasAdjustedWindowSize = false;
+
+async function adjustWindowForGrid(targetCols: number = 120, targetRows: number = 30, force: boolean = false): Promise<void> {
+  if (hasAdjustedWindowSize && !force) return;
+
+  const { width: cellWidth, height: cellHeight } = getXtermCellDimensions();
   const padding = activeAppConfig.terminal_padding || 8;
-  // Account for tabbar (41px), wrapper padding, borders (4px), and scrollbar safety margin (12px)
-  const neededWidth = Math.ceil(targetCols * charWidth + (padding * 2) + 16);
-  const neededHeight = Math.ceil(targetRows * charHeight + 41 + (padding * 2));
+
+  const scrollbarWidth = 16;
+  const availWidth = targetCols * cellWidth + scrollbarWidth + 0.5;
+  const availHeight = targetRows * cellHeight + 0.5;
+
+  const neededWidth = Math.ceil(availWidth + (padding * 2));
+  const neededHeight = Math.ceil(availHeight + 41 + (padding * 2));
 
   try {
     const appWindow = getCurrentWindow();
+    await appWindow.show();
     await appWindow.setSize(new LogicalSize(neededWidth, neededHeight));
-    hasAdjustedWindowSize = true;
-
-    setTimeout(() => {
-      for (const instance of tabsMap.values()) {
-        instance.fitAddon.fit();
-      }
-    }, 50);
   } catch (e) {
     console.warn('Could not set window size via Tauri API:', e);
   }
+
+  try {
+    await fetch(`${DAEMON_URL}/windows/size`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ window: currentWindowId, width: neededWidth, height: neededHeight }),
+    });
+  } catch (e) {}
+
+  hasAdjustedWindowSize = true;
+
+  setTimeout(() => {
+    for (const instance of tabsMap.values()) {
+      instance.fitAddon.fit();
+    }
+  }, 50);
 }
 
 function setFocusedPane(tabId: string) {
