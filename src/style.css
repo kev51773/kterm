@@ -46,7 +46,7 @@ html, body {
 #tabs-scroll-container {
   display: flex;
   align-items: flex-end;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   overflow-x: hidden;
   scroll-behavior: smooth;
@@ -62,7 +62,8 @@ html, body {
   align-items: flex-end;
   gap: 2px;
   height: 100%;
-  min-width: 0;
+  min-width: 100%;
+  width: 100%;
 }
 
 .tab-item {
@@ -80,9 +81,9 @@ html, body {
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   position: relative;
-  flex: 1 1 300px;
-  max-width: 300px;
-  min-width: 180px;
+  flex: 1 1 250px;
+  max-width: 250px;
+  min-width: min(max-content, 140px);
   box-sizing: border-box;
   margin-bottom: 0;
 }
@@ -190,8 +191,8 @@ html, body {
 }
 
 #titlebar-drag-spacer {
-  flex: 1 0 40px;
-  min-width: 40px;
+  flex: 0 1 40px;
+  min-width: 20px;
   height: 100%;
 }
 
