@@ -577,6 +577,11 @@ function getContainerGridDimensions() {
 }
 
 async function pasteToPane(tabId: string) {
+  const inst = tabsMap.get(tabId);
+  if (inst) {
+    setFocusedPane(tabId);
+    inst.term.focus();
+  }
   try {
     let text = '';
     try {
@@ -592,13 +597,13 @@ async function pasteToPane(tabId: string) {
     }
     if (!text) return;
 
-    const inst = tabsMap.get(tabId);
     if (inst) {
       if (inst.ws && inst.ws.readyState === WebSocket.OPEN) {
         inst.ws.send(text);
       } else {
         inst.term.paste(text);
       }
+      inst.term.focus();
     }
   } catch (e) {
     console.error('Failed to paste clipboard text:', e);
@@ -1016,6 +1021,7 @@ function createTabLocal(tabData: TabData) {
   pane.addEventListener('contextmenu', (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setFocusedPane(id);
     showTerminalContextMenu(e.clientX, e.clientY, term, id);
   });
 
@@ -1698,6 +1704,7 @@ function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPan
       navigator.clipboard.writeText(term.getSelection());
     }
     contextMenuEl.style.display = 'none';
+    term.focus();
   });
 
   document.getElementById('ctx-paste')?.addEventListener('click', () => {
