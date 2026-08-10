@@ -1746,30 +1746,15 @@ function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPan
   });
 }
 
-// Tab Header Context Menu (New Tab, Rename, Close)
+// Tab Header Context Menu (Rename, Close)
 function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
-  const currentInst = tabsMap.get(targetTabId);
-  const profile = currentInst?.profile || activeAppConfig.default_profile;
-
   contextMenuEl.innerHTML = `
-    <div class="context-menu-item" id="ctx-tab-new">New Tab (Default Shell) <span class="context-menu-shortcut">Ctrl+Shift++</span></div>
-    <div class="context-menu-item" id="ctx-tab-admin"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="margin-right:6px; color:#ff9800;"><path d="M8 0c-.26 0-.51.1-.7.28L2.28 5.29A1 1 0 0 0 2 6v4c0 3.5 3.5 5.8 5.7 6a.98.98 0 0 0 .6 0C10.5 15.8 14 13.5 14 10V6a1 1 0 0 0-.28-.71L8.7 1.28A.99.99 0 0 0 8 0z"/></svg> Duplicate as Administrator</div>
     <div class="context-menu-item" id="ctx-tab-rename">Rename</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item" id="ctx-tab-close">Close Tab <span class="context-menu-shortcut">Ctrl+Shift+-</span></div>
   `;
 
   positionContextMenu(x, y);
-
-  document.getElementById('ctx-tab-new')?.addEventListener('click', () => {
-    spawnTabWithProfile(activeAppConfig.default_profile, false);
-    contextMenuEl.style.display = 'none';
-  });
-
-  document.getElementById('ctx-tab-admin')?.addEventListener('click', () => {
-    spawnTabWithProfile(profile, true);
-    contextMenuEl.style.display = 'none';
-  });
 
   document.getElementById('ctx-tab-rename')?.addEventListener('click', () => {
     contextMenuEl.style.display = 'none';
