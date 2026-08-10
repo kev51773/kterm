@@ -205,7 +205,7 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
         "bash.exe".to_string()
     };
 
-    let mut cmd = match profile.to_lowercase().as_str() {
+    let cmd = match profile.to_lowercase().as_str() {
         "cmd" => {
             let mut c = CommandBuilder::new("cmd.exe");
             c.arg("/K");
@@ -240,10 +240,17 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
     };
 
     debug_log("BRIDGE: spawning shell command...");
-    let _child = match pair.slave.spawn_command(cmd) {
+    let child = match pair.slave.spawn_command(cmd) {
         Ok(c) => { debug_log("BRIDGE: shell spawned"); c },
         Err(e) => { debug_log(&format!("BRIDGE: shell spawn FAILED: {}", e)); return; },
     };
+
+    let pid = child.process_id().unwrap_or(0);
+    #[cfg(windows)]
+    assign_pid_to_job(pid);
+
+    let child_arc = std::sync::Arc::new(std::sync::Mutex::new(Some(child)));
+    let child_clone = child_arc.clone();
 
     debug_log("BRIDGE: taking master writer...");
     let mut master_writer = match pair.master.take_writer() {
@@ -270,7 +277,13 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
                 break;
             }
         }
-        debug_log("BRIDGE-TX: thread exiting");
+        debug_log("BRIDGE-TX: pipe disconnected or closed. Terminating child shell and bridge process.");
+        if let Ok(mut lock) = child_clone.lock() {
+            if let Some(mut c) = lock.take() {
+                let _ = c.kill();
+            }
+        }
+        std::process::exit(0);
     });
 
     let mut buf = [0u8; 4096];
@@ -285,6 +298,12 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
         }
     }
     debug_log("BRIDGE: main loop exiting (shell closed or pipe broken)");
+    if let Ok(mut lock) = child_arc.lock() {
+        if let Some(mut c) = lock.take() {
+            let _ = c.kill();
+        }
+    }
+    std::process::exit(0);
 }
 
 #[cfg(not(windows))]
@@ -401,6 +420,7 @@ impl PtyManager {
 pub fn create_win32_named_pipe_handle(pipe_name: &str) -> Result<*mut std::ffi::c_void, String> {
     use std::os::windows::ffi::OsStrExt;
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     struct SECURITY_ATTRIBUTES {
         nLength: u32,
@@ -596,7 +616,7 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
                     }
                 }
 
-                let mut file_in = connect_win32_named_pipe(handle_in)?;
+                let file_in = connect_win32_named_pipe(handle_in)?;
                 let file_out = connect_win32_named_pipe(handle_out)?;
                 
                 {
