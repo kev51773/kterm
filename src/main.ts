@@ -32,6 +32,11 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   }
 }, true);
 
+// Disable browser default right-click context menu globally across all UI elements
+window.addEventListener('contextmenu', (e: MouseEvent) => {
+  e.preventDefault();
+});
+
 interface TabData {
   id: string;
   pid: number;
