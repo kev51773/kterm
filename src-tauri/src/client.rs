@@ -613,6 +613,8 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
     let body = json!({
         "profile": args.profile.clone(),
         "window": args.window.clone(),
+        "admin": args.admin,
+        "elevated": args.admin,
     });
 
     let res = client

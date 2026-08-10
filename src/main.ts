@@ -40,6 +40,7 @@ interface TabData {
   title: string;
   badge?: string;
   color?: string;
+  elevated?: boolean;
 }
 
 interface TabInstance {
@@ -48,6 +49,7 @@ interface TabInstance {
   title: string;
   badge?: string;
   color?: string;
+  elevated?: boolean;
   term: Terminal;
   fitAddon: FitAddon;
   findSearchAddon: SearchAddon;
@@ -603,19 +605,24 @@ async function pasteToPane(tabId: string) {
   }
 }
 
-async function spawnTabWithProfile(profile: string = activeAppConfig.default_profile) {
+async function spawnTabWithProfile(profile: string = activeAppConfig.default_profile, elevated: boolean = false) {
   try {
     const { cols, rows } = getContainerGridDimensions();
     const res = await fetch(`${DAEMON_URL}/tabs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, window: currentWindowId, cols, rows }),
+      body: JSON.stringify({ profile, window: currentWindowId, cols, rows, elevated }),
     });
+
     if (res.ok) {
       const tabData: TabData = await res.json();
       createTabLocal(tabData);
       await syncTabs();
       switchTab(tabData.id);
+    } else {
+      const errText = await res.text();
+      console.error(`Failed to create tab (elevated=${elevated}):`, errText);
+      alert(errText || 'Launching Administrator tabs requires running kterm as Administrator.');
     }
   } catch (e) {
     console.error(`Failed to create new tab with profile ${profile}`, e);
@@ -625,7 +632,37 @@ async function spawnTabWithProfile(profile: string = activeAppConfig.default_pro
 // Profile Dropdown Menu Element
 const profileDropdownEl = document.createElement('div');
 profileDropdownEl.className = 'profile-dropdown-menu';
-profileDropdownEl.style.display = 'none';
+// Profile SubMenu Element (Right-click profile menu item)
+const profileSubMenuEl = document.createElement('div');
+profileSubMenuEl.className = 'context-menu profile-submenu';
+profileSubMenuEl.style.display = 'none';
+document.body.appendChild(profileSubMenuEl);
+
+function closeProfileSubMenu() {
+  profileSubMenuEl.style.display = 'none';
+}
+
+function openProfileSubMenu(profileId: string, clientX: number, clientY: number) {
+  profileSubMenuEl.innerHTML = `
+    <div class="context-menu-item" id="ctx-profile-admin">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="margin-right:6px; color:#ff9800;">
+        <path d="M8 0c-.26 0-.51.1-.7.28L2.28 5.29A1 1 0 0 0 2 6v4c0 3.5 3.5 5.8 5.7 6a.98.98 0 0 0 .6 0C10.5 15.8 14 13.5 14 10V6a1 1 0 0 0-.28-.71L8.7 1.28A.99.99 0 0 0 8 0z"/>
+      </svg>
+      Run as Admin
+    </div>
+  `;
+
+  profileSubMenuEl.style.top = `${clientY}px`;
+  profileSubMenuEl.style.left = `${clientX}px`;
+  profileSubMenuEl.style.display = 'block';
+
+  document.getElementById('ctx-profile-admin')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeProfileSubMenu();
+    profileDropdownEl.style.display = 'none';
+    spawnTabWithProfile(profileId, true);
+  });
+}
 
 function renderProfileDropdownMenu() {
   profileDropdownEl.innerHTML = '';
@@ -634,11 +671,22 @@ function renderProfileDropdownMenu() {
     const item = document.createElement('div');
     item.className = 'profile-dropdown-item';
     item.textContent = label;
+
+    // Left click: normal spawn
     item.addEventListener('click', (e) => {
       e.stopPropagation();
+      closeProfileSubMenu();
       profileDropdownEl.style.display = 'none';
-      spawnTabWithProfile(id);
+      spawnTabWithProfile(id, false);
     });
+
+    // Right click on shell: open submenu with "Run as Admin"
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openProfileSubMenu(id, e.clientX, e.clientY);
+    });
+
     profileDropdownEl.appendChild(item);
   });
 
@@ -651,6 +699,7 @@ function renderProfileDropdownMenu() {
   exportItem.innerHTML = `Export Layout...`;
   exportItem.addEventListener('click', (e) => {
     e.stopPropagation();
+    closeProfileSubMenu();
     profileDropdownEl.style.display = 'none';
     triggerExportSave();
   });
@@ -661,6 +710,7 @@ function renderProfileDropdownMenu() {
   settingsItem.innerHTML = `Settings <span class="context-menu-shortcut">Ctrl+,</span>`;
   settingsItem.addEventListener('click', (e) => {
     e.stopPropagation();
+    closeProfileSubMenu();
     profileDropdownEl.style.display = 'none';
     settingsModal.open();
   });
@@ -676,18 +726,22 @@ contextMenuEl.className = 'context-menu';
 contextMenuEl.style.display = 'none';
 document.body.appendChild(contextMenuEl);
 
-window.addEventListener('click', () => {
+window.addEventListener('click', (e) => {
+  const target = e.target as Node;
+  if (contextMenuEl.contains(target) || profileDropdownEl.contains(target) || profileSubMenuEl.contains(target)) return;
   contextMenuEl.style.display = 'none';
   profileDropdownEl.style.display = 'none';
+  closeProfileSubMenu();
 });
 
 addTabBtn.addEventListener('click', () => {
-  spawnTabWithProfile(activeAppConfig.default_profile);
+  spawnTabWithProfile(activeAppConfig.default_profile, false);
 });
 
 if (tabDropdownBtn) {
   tabDropdownBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    closeProfileSubMenu();
     contextMenuEl.style.display = 'none';
     const isVisible = profileDropdownEl.style.display === 'block';
     if (isVisible) {
@@ -971,6 +1025,7 @@ function createTabLocal(tabData: TabData) {
     title: tabData.title || `Tab ${id}`,
     badge: tabData.badge,
     color: tabData.color,
+    elevated: tabData.elevated,
     term,
     fitAddon,
     findSearchAddon,
@@ -991,6 +1046,7 @@ function updateTabLocal(tabData: TabData) {
   instance.title = tabData.title || `Tab ${id}`;
   instance.badge = tabData.badge;
   instance.color = tabData.color;
+  instance.elevated = tabData.elevated;
 }
 
 function connectWebSocket(instance: TabInstance) {
@@ -1076,6 +1132,16 @@ function renderTabBarHeaders() {
     }
 
     tabEl.appendChild(titleEl);
+
+    const isElevated = paneIds.some((pId) => tabsMap.get(pId)?.elevated);
+    if (isElevated) {
+      tabEl.classList.add('tab-admin');
+      const adminBadgeEl = document.createElement('span');
+      adminBadgeEl.className = 'tab-admin-badge';
+      adminBadgeEl.title = 'Running as Administrator';
+      adminBadgeEl.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0c-.26 0-.51.1-.7.28L2.28 5.29A1 1 0 0 0 2 6v4c0 3.5 3.5 5.8 5.7 6a.98.98 0 0 0 .6 0C10.5 15.8 14 13.5 14 10V6a1 1 0 0 0-.28-.71L8.7 1.28A.99.99 0 0 0 8 0z"/></svg> <span>ADMIN</span>`;
+      tabEl.appendChild(adminBadgeEl);
+    }
 
     if (tabInst?.badge) {
       const badgeEl = document.createElement('span');
@@ -1682,8 +1748,12 @@ function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPan
 
 // Tab Header Context Menu (New Tab, Rename, Close)
 function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
+  const currentInst = tabsMap.get(targetTabId);
+  const profile = currentInst?.profile || activeAppConfig.default_profile;
+
   contextMenuEl.innerHTML = `
     <div class="context-menu-item" id="ctx-tab-new">New Tab (Default Shell) <span class="context-menu-shortcut">Ctrl+Shift++</span></div>
+    <div class="context-menu-item" id="ctx-tab-admin"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="margin-right:6px; color:#ff9800;"><path d="M8 0c-.26 0-.51.1-.7.28L2.28 5.29A1 1 0 0 0 2 6v4c0 3.5 3.5 5.8 5.7 6a.98.98 0 0 0 .6 0C10.5 15.8 14 13.5 14 10V6a1 1 0 0 0-.28-.71L8.7 1.28A.99.99 0 0 0 8 0z"/></svg> Duplicate as Administrator</div>
     <div class="context-menu-item" id="ctx-tab-rename">Rename</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item" id="ctx-tab-close">Close Tab <span class="context-menu-shortcut">Ctrl+Shift+-</span></div>
@@ -1692,7 +1762,12 @@ function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
   positionContextMenu(x, y);
 
   document.getElementById('ctx-tab-new')?.addEventListener('click', () => {
-    spawnTabWithProfile(activeAppConfig.default_profile);
+    spawnTabWithProfile(activeAppConfig.default_profile, false);
+    contextMenuEl.style.display = 'none';
+  });
+
+  document.getElementById('ctx-tab-admin')?.addEventListener('click', () => {
+    spawnTabWithProfile(profile, true);
     contextMenuEl.style.display = 'none';
   });
 

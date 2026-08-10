@@ -41,6 +41,12 @@ fn main() {
 
     let args = CliArgs::parse_from(modified_args);
 
+    if let Some(pipe_name) = &args.elevated_pty_bridge {
+        let profile = args.profile.as_deref().unwrap_or("powershell");
+        pty::manager::run_elevated_pty_bridge(pipe_name, profile);
+        std::process::exit(0);
+    }
+
     if args.daemon {
         run_host_daemon(args);
         return;
@@ -64,7 +70,7 @@ fn main() {
     std::process::exit(0);
 }
 
-fn run_host_daemon(_args: CliArgs) {
+fn run_host_daemon(args: CliArgs) {
     let pty_manager = PtyManager::new();
 
     let window_titles = Arc::new(Mutex::new(HashMap::new()));
@@ -78,6 +84,7 @@ fn run_host_daemon(_args: CliArgs) {
     let pty_manager_event = pty_manager.clone();
     let window_titles_event = window_titles.clone();
     let window_layouts_event = window_layouts.clone();
+    let apply_file = args.apply.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -95,21 +102,17 @@ fn run_host_daemon(_args: CliArgs) {
             let (default_w, default_h) = cfg.get_default_window_size();
 
             if let Some(window) = app.get_webview_window("win-1") {
-                eprintln!("[kterm host] Primary window 'win-1' initialized");
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
                 let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: default_w, height: default_h }));
                 let _ = window.show();
                 let _ = window.center();
                 let _ = window.set_focus();
             } else if let Some(window) = app.get_webview_window("main") {
-                eprintln!("[kterm host] Window 'main' fallback initialized");
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
                 let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: default_w, height: default_h }));
                 let _ = window.show();
                 let _ = window.center();
                 let _ = window.set_focus();
-            } else {
-                eprintln!("[kterm ERROR] Primary window NOT found in setup!");
             }
 
             let app_handle = app.handle().clone();
@@ -120,9 +123,23 @@ fn run_host_daemon(_args: CliArgs) {
                 window_layouts,
             };
 
+            let daemon_state_clone = daemon_state.clone();
             tauri::async_runtime::spawn(async move {
-                daemon::run_server("127.0.0.1:9999", daemon_state).await;
+                daemon::run_server("127.0.0.1:9999", daemon_state_clone).await;
             });
+
+            if let Some(file_path) = apply_file {
+                let daemon_state_apply = daemon_state.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+                    if let Ok(content) = std::fs::read_to_string(&file_path) {
+                        if let Ok(spec) = serde_yaml::from_str::<crate::yaml::YamlSessionSpec>(&content) {
+                            let _ = crate::yaml::apply_yaml_spec(&daemon_state_apply, &spec, Some("win-1"), None, false);
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .on_window_event(move |window, event| {

@@ -25,6 +25,8 @@ pub struct YamlTabSpec {
     pub badge: Option<String>,
     pub color: Option<String>,
     pub cwd: Option<String>,
+    pub admin: Option<bool>,
+    pub elevated: Option<bool>,
     pub send_text: Option<String>,
     pub splits: Option<Vec<YamlSplitSpec>>,
 }
@@ -38,6 +40,8 @@ pub struct YamlSplitSpec {
     pub badge: Option<String>,
     pub color: Option<String>,
     pub cwd: Option<String>,
+    pub admin: Option<bool>,
+    pub elevated: Option<bool>,
     pub send_text: Option<String>,
     pub splits: Option<Vec<YamlSplitSpec>>,
 }
@@ -231,11 +235,13 @@ pub fn apply_yaml_spec(
             .clone()
             .unwrap_or_else(|| state.pty_manager.generate_next_tab_id_for_window(&window_id));
 
+        let is_admin = tab_spec.admin.or(tab_spec.elevated).unwrap_or(false);
         let sess = state.pty_manager.spawn_with_cwd(
             root_tab_id.clone(),
             tab_spec.profile.clone(),
             window_id.clone(),
             tab_spec.cwd.as_deref(),
+            is_admin,
         )?;
 
         if let Some(title) = &tab_spec.title {
@@ -293,11 +299,13 @@ fn apply_split_recursive(
         .clone()
         .unwrap_or_else(|| state.pty_manager.generate_next_tab_id_for_window(window_id));
 
+    let is_split_admin = split_spec.admin.or(split_spec.elevated).unwrap_or(false);
     let sess = state.pty_manager.spawn_with_cwd(
         new_tab_id.clone(),
         split_spec.profile.clone(),
         window_id.to_string(),
         split_spec.cwd.as_deref(),
+        is_split_admin,
     )?;
 
     if let Some(title) = &split_spec.title {

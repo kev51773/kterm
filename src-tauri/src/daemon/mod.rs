@@ -41,6 +41,7 @@ pub struct TabInfo {
     pub color: Option<String>,
     pub cols: u16,
     pub rows: u16,
+    pub elevated: bool,
 }
 
 #[derive(Deserialize)]
@@ -49,6 +50,8 @@ pub struct CreateTabRequest {
     pub window: Option<String>,
     pub cols: Option<u16>,
     pub rows: Option<u16>,
+    pub admin: Option<bool>,
+    pub elevated: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -193,9 +196,19 @@ pub async fn run_server(addr_str: &str, state: AppState) {
     let addr: SocketAddr = addr_str.parse().expect("Invalid daemon address");
     tracing::info!("Starting Axum daemon on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .expect("Failed to bind daemon TCP listener");
+    let mut listener = None;
+    for _ in 0..15 {
+        match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => {
+                listener = Some(l);
+                break;
+            }
+            Err(_) => {
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            }
+        }
+    }
+    let listener = listener.expect("Failed to bind daemon TCP listener");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -248,6 +261,7 @@ async fn list_tabs(
                 color,
                 cols: *s.cols.lock().unwrap(),
                 rows: *s.rows.lock().unwrap(),
+                elevated: s.elevated,
             }
         })
         .collect();
@@ -270,14 +284,17 @@ async fn create_tab(
         .filter(|w| !w.trim().is_empty())
         .unwrap_or_else(|| "win-1".to_string());
 
-
     let cols = payload.as_ref().and_then(|p| p.cols).unwrap_or(120);
     let rows = payload.as_ref().and_then(|p| p.rows).unwrap_or(30);
+    let elevated = payload
+        .as_ref()
+        .and_then(|p| p.admin.or(p.elevated))
+        .unwrap_or(false);
 
     let tab_id = state.pty_manager.generate_next_tab_id_for_window(&window_id);
     let session = state
         .pty_manager
-        .spawn_with_size_and_cwd(tab_id.clone(), profile.clone(), window_id.clone(), cols, rows, None)
+        .spawn_with_size_and_cwd(tab_id.clone(), profile.clone(), window_id.clone(), cols, rows, None, elevated)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let title = session.title.lock().unwrap().clone();
@@ -305,6 +322,7 @@ async fn create_tab(
         color,
         cols,
         rows,
+        elevated: session.elevated,
     }))
 }
 
@@ -706,7 +724,7 @@ async fn split_tab(
         let tab_id = state.pty_manager.generate_next_tab_id_for_window(&window_id);
         let _ = state
             .pty_manager
-            .spawn(tab_id.clone(), profile, window_id.clone())
+            .spawn_with_cwd(tab_id.clone(), profile, window_id.clone(), None, target_session.elevated)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
         tab_id
     };

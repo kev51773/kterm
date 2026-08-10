@@ -52,6 +52,12 @@ pub struct CliArgs {
     #[arg(short, long, help = "Terminal profile (powershell, cmd, wsl, git-bash)")]
     pub profile: Option<String>,
 
+    #[arg(long, help = "Run shell with Administrator privileges")]
+    pub admin: bool,
+
+    #[arg(long, help = "Internal elevated PTY bridge mode")]
+    pub elevated_pty_bridge: Option<String>,
+
     #[arg(long, help = "Target window ID (e.g. win-1, win-2)")]
     pub window: Option<String>,
 

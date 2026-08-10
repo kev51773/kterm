@@ -4,7 +4,7 @@ use crate::yaml::{YamlSessionSpec, YamlSplitSpec, YamlTabSpec, YamlWindowSpec};
 use std::sync::Arc;
 use crate::pty::PtySession;
 
-pub fn export_yaml_layout(state: &AppState, window_id: &str) -> String {
+pub fn export_yaml_spec(state: &AppState, window_id: &str) -> YamlSessionSpec {
     let sessions = state.pty_manager.list_by_window(Some(window_id));
     let titles_map = state.window_titles.lock().unwrap();
     let win_title = titles_map.get(window_id).cloned();
@@ -43,20 +43,25 @@ pub fn export_yaml_layout(state: &AppState, window_id: &str) -> String {
                 badge: sess.badge.lock().unwrap().clone(),
                 color: sess.color.lock().unwrap().clone(),
                 cwd: None,
+                admin: if sess.elevated { Some(true) } else { None },
+                elevated: if sess.elevated { Some(true) } else { None },
                 send_text: None,
                 splits: None,
             });
         }
     }
 
-    let spec = YamlSessionSpec {
+    YamlSessionSpec {
         window: YamlWindowSpec {
             id: Some(window_id.to_string()),
             title: win_title,
         },
         tabs,
-    };
+    }
+}
 
+pub fn export_yaml_layout(state: &AppState, window_id: &str) -> String {
+    let spec = export_yaml_spec(state, window_id);
     serde_yaml::to_string(&spec).unwrap_or_else(|e| format!("# Error serializing layout: {}", e))
 }
 
@@ -86,6 +91,8 @@ fn convert_node_to_tab(
                 badge: sess.badge.lock().unwrap().clone(),
                 color: sess.color.lock().unwrap().clone(),
                 cwd: None,
+                admin: if sess.elevated { Some(true) } else { None },
+                elevated: if sess.elevated { Some(true) } else { None },
                 send_text: None,
                 splits: None,
             })
@@ -141,6 +148,8 @@ fn convert_node_to_split(
                 badge: sess.badge.lock().unwrap().clone(),
                 color: sess.color.lock().unwrap().clone(),
                 cwd: None,
+                admin: if sess.elevated { Some(true) } else { None },
+                elevated: if sess.elevated { Some(true) } else { None },
                 send_text: None,
                 splits: None,
             })
