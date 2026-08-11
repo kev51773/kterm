@@ -138,6 +138,7 @@ describe('01-core (default boot)', () => {
     await waitForUiTabs(2)
     setTabTitle(freshTabId(before), 'test-05-temp')
     await waitForTabTitle('test-05-temp')
+    await captureScreenshot('01-core', '05-kbd-close-tab-open')
     step('Pressed Ctrl+Shift+- (close tab)')
     await browser.keys(['Control', 'Shift', '-'])
     await waitForUiTabs(1)
