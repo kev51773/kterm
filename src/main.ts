@@ -945,6 +945,20 @@ function createTabLocal(tabData: TabData) {
         return false;
       }
 
+      // Jump to Tab Index 1..9 (Ctrl+Shift+1..9)
+      if (isCtrl && isShift && e.code.startsWith('Digit')) {
+        const digit = parseInt(e.code.replace('Digit', ''), 10);
+        if (digit >= 1 && digit <= 9) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          if (!e.repeat && digit - 1 < currentLayouts.length) {
+            const targetIds = getTabIdsInNode(currentLayouts[digit - 1]);
+            if (targetIds.length > 0) switchTab(targetIds[0]);
+          }
+          return false;
+        }
+      }
+
       // Open Settings Shortcut
       if (isCtrl && e.code === 'Comma') {
         e.preventDefault();
