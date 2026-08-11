@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { APP_BINARY, DAEMON_BASE_URL } from './paths.js'
+import { step } from './run.js'
 
 export interface CliResult {
   stdout: string
@@ -7,7 +8,18 @@ export interface CliResult {
   exitCode: number
 }
 
+// Test plumbing / introspection — logged only when they actually change state.
+const READ_ONLY_FLAGS = ['--list-tabs', '--list-windows', '--read-text', '--wait-for', '--wait-for-prompt', '--export-layout']
+
+function cliDescription(args: string[]): string {
+  const parts = args.map((a) => (/[^A-Za-z0-9_=.,:/\\-]/.test(a) ? `"${a}"` : a))
+  return `executed kterm.exe ${parts.join(' ')}`
+}
+
 export function cli(args: string[]): CliResult {
+  if (!args.some((a) => READ_ONLY_FLAGS.includes(a))) {
+    step(cliDescription(args))
+  }
   try {
     const stdout = execFileSync(APP_BINARY, args, { encoding: 'utf8', timeout: 60000 })
     return { stdout, stderr: '', exitCode: 0 }

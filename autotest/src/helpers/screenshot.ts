@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { browser } from '@wdio/globals'
 import { SCREENSHOT_BASELINE, SCREENSHOT_ACTUAL, DIFF_DIR, UPDATE_BASELINE } from './paths.js'
+import { step, addScreenshot, relToAutotest } from './run.js'
 
 export interface ShotResult {
   name: string
@@ -25,6 +26,10 @@ export async function captureScreenshot(spec: string, name: string): Promise<Sho
 
   await browser.saveScreenshot(actualPath)
   await saveStateJson(actualPath)
+
+  const rel = relToAutotest(actualPath)
+  step(`took screenshot ${path.basename(actualPath)}`)
+  addScreenshot(rel)
 
   const result: ShotResult = { name, path: actualPath, status: 'match' }
 
@@ -50,14 +55,6 @@ export async function captureScreenshot(spec: string, name: string): Promise<Sho
     console.log(`  [shot] ${name} -> DIFF ${mismatch.toFixed(3)}% (baseline: ${path.basename(baselinePath)})`)
   }
   return result
-}
-
-export async function captureFailureScreenshot(spec: string, name: string): Promise<void> {
-  try {
-    await captureScreenshot(spec, name)
-  } catch {
-    // best-effort failure capture
-  }
 }
 
 async function pixelDiff(baselinePath: string, actualPath: string, spec: string, name: string): Promise<number | null> {

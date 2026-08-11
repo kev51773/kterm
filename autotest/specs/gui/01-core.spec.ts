@@ -6,6 +6,7 @@ import {
   setTabTitle, waitForPrompt, waitFor, sendText, splitTab,
 } from '../../src/helpers/daemon.js'
 import { captureScreenshot } from '../../src/helpers/screenshot.js'
+import { step } from '../../src/helpers/run.js'
 
 async function hoverSplitMenu(): Promise<void> {
   const menu = await $('#ctx-split-menu')
@@ -89,6 +90,7 @@ describe('01-core (default boot)', () => {
 
   it('1. Boot shell', async () => {
     await waitForUiTabs(1)
+    step('Focused the terminal pane')
     await focusTerminal()
     setTabTitle(tabByProfile('powershell'), 'test-01')
     await waitForTabTitle('test-01')
@@ -97,6 +99,7 @@ describe('01-core (default boot)', () => {
 
   it('2. Add tab', async () => {
     const before = tabIds()
+    step('Clicked the "+" add tab button')
     await (await $('#add-tab-btn')).click()
     await waitForUiTabs(2)
     setTabTitle(freshTabId(before), 'test-02')
@@ -106,10 +109,12 @@ describe('01-core (default boot)', () => {
 
   it('3. Close tab', async () => {
     const before = tabIds()
+    step('Clicked the "+" add tab button')
     await (await $('#add-tab-btn')).click()
     await waitForUiTabs(2)
     setTabTitle(freshTabId(before), 'test-03-temp')
     await waitForTabTitle('test-03-temp')
+    step('Clicked the close button on the last tab')
     await clickTabCloseOnLastTab()
     await waitForUiTabs(1)
     echoText(before[0], 'Test-03 - closed the tab that test 02 opened', 20)
@@ -118,6 +123,7 @@ describe('01-core (default boot)', () => {
 
   it('4. Keyboard: new tab', async () => {
     const before = tabIds()
+    step('Pressed Ctrl+Shift+= (new tab)')
     await browser.keys(['Control', 'Shift', '='])
     await waitForUiTabs(2)
     setTabTitle(freshTabId(before), 'test-04')
@@ -127,10 +133,12 @@ describe('01-core (default boot)', () => {
 
   it('5. Keyboard: close tab', async () => {
     const before = tabIds()
+    step('Pressed Ctrl+Shift+= (new tab)')
     await browser.keys(['Control', 'Shift', '='])
     await waitForUiTabs(2)
     setTabTitle(freshTabId(before), 'test-05-temp')
     await waitForTabTitle('test-05-temp')
+    step('Pressed Ctrl+Shift+- (close tab)')
     await browser.keys(['Control', 'Shift', '-'])
     await waitForUiTabs(1)
     echoText(before[0], 'Test-05 - keyboard closed the tab that test 04 opened', 20)
@@ -139,12 +147,14 @@ describe('01-core (default boot)', () => {
 
   it('6. Cycle tabs', async () => {
     const before = tabIds()
+    step('Clicked the "+" add tab button')
     await (await $('#add-tab-btn')).click()
     await waitForUiTabs(2)
     const fresh = freshTabId(before)
     setTabTitle(before[0], 'test-06a')
     setTabTitle(fresh, 'test-06b')
     await waitForTabTitle('test-06b')
+    step('Pressed Ctrl+Tab (next tab)')
     await browser.keys(['Control', 'Tab'])
     await waitForTabTitle('test-06a')
     await captureScreenshot('01-core', '06-cycle-tabs')
@@ -152,12 +162,14 @@ describe('01-core (default boot)', () => {
 
   it('7. Switch tab by click', async () => {
     const before = tabIds()
+    step('Clicked the "+" add tab button')
     await (await $('#add-tab-btn')).click()
     await waitForUiTabs(2)
     const fresh = freshTabId(before)
     setTabTitle(before[0], 'test-07a')
     setTabTitle(fresh, 'test-07b')
     await waitForTabTitle('test-07b')
+    step('Clicked the first tab in the tab bar')
     await clickFirstTab()
     await waitForTabTitle('test-07a')
     await captureScreenshot('01-core', '07-switch-tab')
@@ -165,19 +177,23 @@ describe('01-core (default boot)', () => {
 
   it('8. Settings modal (Ctrl+,)', async () => {
     const before = tabIds()
+    step('Clicked the "+" add tab button')
     await (await $('#add-tab-btn')).click()
     await waitForUiTabs(2)
     setTabTitle(freshTabId(before), 'test-08')
     await waitForTabTitle('test-08')
+    step('Pressed Ctrl+, (open settings)')
     await browser.keys(['Control', ','])
     const modal = await $('.settings-modal')
     await modal.waitForExist({ timeout: 5000 })
     await captureScreenshot('01-core', '08-settings-modal')
+    step('Clicked the settings close button')
     await (await modal.$('.settings-close-btn')).click()
     await modal.waitForExist({ timeout: 5000, reverse: true })
   })
 
   it('9. Settings via dropdown', async () => {
+    step('Clicked the tab dropdown button')
     await (await $('#tab-dropdown-btn')).click()
     const items = await $$('.profile-dropdown-menu .profile-dropdown-item')
     let target: Awaited<typeof items[0]> | null = null
@@ -188,15 +204,18 @@ describe('01-core (default boot)', () => {
       }
     }
     if (!target) throw new Error('settings item not found in profile dropdown')
+    step('Clicked "Settings" in the dropdown')
     await target.click()
     const modal = await $('.settings-modal')
     await modal.waitForExist({ timeout: 5000 })
     await captureScreenshot('01-core', '09-settings-dropdown')
+    step('Clicked the settings close button')
     await (await modal.$('.settings-close-btn')).click()
     await modal.waitForExist({ timeout: 5000, reverse: true })
   })
 
   it('10. Spawn cmd tab from dropdown', async () => {
+    step('Clicked the tab dropdown button')
     await (await $('#tab-dropdown-btn')).click()
     const items = await $$('.profile-dropdown-menu .profile-dropdown-item')
     let target: Awaited<typeof items[0]> | null = null
@@ -207,6 +226,7 @@ describe('01-core (default boot)', () => {
       }
     }
     if (!target) throw new Error('cmd item not found in profile dropdown')
+    step('Clicked "Command Prompt" in the dropdown')
     await target.click()
     await waitForUiTabs(2)
     const cmdTab = tabByProfile('cmd')
@@ -217,10 +237,12 @@ describe('01-core (default boot)', () => {
   })
 
   it('11. Context menu', async () => {
+    step('Right-clicked the terminal pane to open the context menu')
     await openContextMenu('.terminal-pane')
     const items = await $$('.context-menu:not(.profile-submenu) .context-menu-item')
     expect(items.length).toBeGreaterThan(0)
     await captureScreenshot('01-core', '11-context-menu')
+    step('Focused the terminal pane')
     await focusTerminal()
   })
 
@@ -228,26 +250,37 @@ describe('01-core (default boot)', () => {
     const main = tabIds()[0]
     setTabTitle(main, 'test-12-split')
     await waitForTabTitle('test-12-split')
+    step('Right-clicked the terminal pane')
     await openContextMenu('.terminal-pane')
+    step('Hovered the Split submenu')
     await hoverSplitMenu()
+    step('Clicked "Split Right"')
     await (await $('#ctx-split-right')).click()
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 2, { timeout: 10000 })
     await browser.pause(800)
     await captureScreenshot('01-core', '12-split-pane')
+    step('Focused the terminal pane')
     await focusTerminal()
+    step('Right-clicked the terminal pane')
     await openContextMenu('.terminal-pane')
+    step('Hovered the Split submenu')
     await hoverSplitMenu()
+    step('Clicked "Unsplit"')
     await (await $('#ctx-unsplit')).click()
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 1, { timeout: 10000 })
   })
 
   it('13. Find bar', async () => {
+    step('Focused the terminal pane')
     await focusTerminal()
+    step('Pressed Ctrl+F (find bar)')
     await browser.keys(['Control', 'f'])
     const input = await $('.find-input')
     await input.waitForExist({ timeout: 5000 })
+    step('Typed find query "Test-13 find query"')
     await input.setValue('Test-13 find query')
     await captureScreenshot('01-core', '13-find-bar')
+    step('Clicked the find close button')
     await (await $('.find-close')).click()
     await input.waitForExist({ timeout: 5000, reverse: true })
   })
@@ -274,6 +307,7 @@ describe('01-core (default boot)', () => {
     ]
     for (const s of SHELLS) {
       const before = tabIds()
+      step(`Shell walk: ${s.profile}`)
       spawnTab(s.profile)
       // DOM .tab-item counts layout nodes, not tabs — after any split those
       // diverge. Wait on daemon truth; expectTabTitleVisible is the UI barrier.

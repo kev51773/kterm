@@ -7,6 +7,7 @@ import {
 } from '../../src/helpers/daemon.js'
 import { captureScreenshot } from '../../src/helpers/screenshot.js'
 import { DAEMON_BASE_URL } from '../../src/helpers/paths.js'
+import { step } from '../../src/helpers/run.js'
 
 async function waitForTabTitle(expected: string, timeout = 15000): Promise<void> {
   await browser.waitUntil(async () => (await activeTabTitle()) === expected, { timeout })
@@ -108,14 +109,19 @@ describe('04-ux', () => {
     waitForPrompt(t, 30)
     sendText(t, 'echo UX-HIGHLIGHT-DEMO-4711')
     waitFor(t, 'UX-HIGHLIGHT-DEMO-4711', 30)
+    step('Focused the terminal pane')
     await focusTerminal()
+    step('Right-clicked the terminal pane')
     await openContextMenu('.terminal-pane')
+    step('Clicked "Highlights" in the context menu')
     await (await $('#ctx-highlights')).click()
 
     const modal = await $('.highlights-modal')
     await modal.waitForExist({ timeout: 5000 })
     const input = await $('.highlights-input')
+    step('Typed highlight "UX-HIGHLIGHT-DEMO-4711"')
     await input.setValue('UX-HIGHLIGHT-DEMO-4711')
+    step('Clicked "Add"')
     await (await $('.highlights-add-btn')).click()
 
     await browser.waitUntil(
@@ -124,11 +130,13 @@ describe('04-ux', () => {
     )
     await captureScreenshot('04-ux', '02-highlights-added')
 
+    step('Clicked remove (×) on the highlight')
     await (await $('.highlight-remove-btn')).click()
     await browser.waitUntil(
       async () => (await $$('.xterm-decoration').length) === 0,
       { timeout: 10000 },
     )
+    step('Clicked "Done"')
     await (await $('.highlights-done-btn')).click()
     await modal.waitForExist({ timeout: 5000, reverse: true })
     await captureScreenshot('04-ux', '02-highlights-removed')
@@ -137,6 +145,7 @@ describe('04-ux', () => {
   it('3. Keyboard: prev cycle, jump-to-index, split, unsplit', async () => {
     await resetGuiState()
     const b0 = tabIds()
+    step('Clicked the "+" add tab button')
     await (await $('#add-tab-btn')).click()
     await waitForUiTabs(2)
     const t1 = b0[0]
@@ -145,20 +154,26 @@ describe('04-ux', () => {
     setTabTitle(t2, 'ux-k2')
     await waitForTabTitle('ux-k2')
 
+    step('Pressed Ctrl+Shift+Tab (previous tab)')
     await browser.keys(['Control', 'Shift', 'Tab'])
     await waitForTabTitle('ux-k1')
     await captureScreenshot('04-ux', '03-kbd-prev')
 
+    step('Pressed Ctrl+Shift+2 (jump to tab index 2)')
     await browser.keys(['Control', 'Shift', '2'])
     await waitForTabTitle('ux-k2')
+    step('Pressed Ctrl+Shift+1 (jump to tab index 1)')
     await browser.keys(['Control', 'Shift', '1'])
     await waitForTabTitle('ux-k1')
 
+    step('Focused the terminal pane')
     await focusTerminal()
+    step('Pressed Ctrl+Shift+→ (split right)')
     await browser.keys(['Control', 'Shift', 'ArrowRight'])
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 2, { timeout: 10000 })
     await captureScreenshot('04-ux', '03-kbd-split')
 
+    step('Pressed Ctrl+Shift+W (unsplit)')
     await browser.keys(['Control', 'Shift', 'w'])
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 1, { timeout: 10000 })
     await resetGuiState()
@@ -168,13 +183,17 @@ describe('04-ux', () => {
     await resetGuiState()
     const t = await firstTabId()
     waitForPrompt(t, 30)
+    step('Copied "KTERM-PASTE-DEMO-8842" to the Windows clipboard')
     setClipboard('KTERM-PASTE-DEMO-8842')
+    step('Focused the terminal pane')
     await focusTerminal()
+    step('Pressed Ctrl+V (paste)')
     await browser.keys(['Control', 'v'])
     waitFor(t, 'KTERM-PASTE-DEMO-8842', 30)
     await captureScreenshot('04-ux', '04-paste')
     sendText(t, '')
     waitForPrompt(t, 15)
+    step('Cleared the clipboard')
     setClipboard(' ')
   })
 
@@ -184,10 +203,13 @@ describe('04-ux', () => {
     waitForPrompt(t, 30)
     sendText(t, 'echo KTERM-COPY-DEMO-5509')
     waitFor(t, 'KTERM-COPY-DEMO-5509', 30)
+    step('Focused the terminal pane')
     await focusTerminal()
+    step('Dragged to select the "KTERM-COPY-DEMO-5509" text')
     await dragSelectText('KTERM-COPY-DEMO-5509')
     await browser.waitUntil(async () => (await $$('.xterm-selection div').length) > 0, { timeout: 5000 })
 
+    step('Pressed Ctrl+C (smart copy)')
     await browser.keys(['Control', 'c'])
     await browser.waitUntil(() => getClipboard().includes('KTERM-COPY-DEMO-5509'), {
       timeout: 8000,
@@ -207,6 +229,7 @@ describe('04-ux', () => {
     expect(before).toBeGreaterThanOrEqual(0.4)
     expect(before).toBeLessThanOrEqual(0.6)
 
+    step('Dragged the split divider 120px to the right')
     const div = await $('.split-divider.horizontal')
     await div.waitForExist({ timeout: 5000 })
     const rect = await getElementRect('.split-divider.horizontal')

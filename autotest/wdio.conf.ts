@@ -1,9 +1,38 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Options } from '@wdio/types'
-import { APP_BINARY, APPDATA_DIR } from './src/helpers/paths.js'
+import { APP_BINARY, APPDATA_DIR, SCREENSHOT_ACTUAL } from './src/helpers/paths.js'
 import { ensureIsolatedAppdata, killAllKterm } from './src/helpers/env.js'
-import { captureFailureScreenshot } from './src/helpers/screenshot.js'
+import { startTest, endTest, step, addScreenshot, currentTest, relToAutotest } from './src/helpers/run.js'
+import { generate as generateReport } from './src/report/report.js'
+import { browser } from '@wdio/globals'
+
+function specFromFile(file?: string): string {
+  return file?.split(/[\\/]/).pop()?.replace(/\.spec\.ts$/, '') ?? 'unknown'
+}
+
+function shotSlug(title: string): string {
+  return title.toLowerCase().replace(/^\d+[.)\s]*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+function shotName(index: number, title: string): string {
+  return `T${index}-${shotSlug(title) || 'test'}.png`
+}
+
+async function captureEndScreenshot(): Promise<void> {
+  const cur = currentTest()
+  if (!cur) return
+  const file = `${cur.spec}/${shotName(cur.index, cur.title)}`
+  const abs = path.join(SCREENSHOT_ACTUAL, file)
+  try {
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    await browser.saveScreenshot(abs)
+    step(`took screenshot ${path.basename(abs)}`)
+    addScreenshot(relToAutotest(abs))
+  } catch (e) {
+    console.error('[afterTest] end screenshot failed:', (e as Error)?.message ?? e, '| abs:', abs, '| ext:', path.extname(abs))
+  }
+}
 
 // Boot mode selects how the app under test launches. Each mode = its own app
 // instance (one boot), so the three modes cannot share a wdio run.
@@ -86,12 +115,18 @@ export const config: Options.Testrunner = {
     ensureIsolatedAppdata()
     writeBootFixtures()
   },
+  beforeTest: (test, context) => {
+    startTest(specFromFile(context?.test?.parent?.file), test.title)
+  },
   afterTest: async (test, context, { error }) => {
-    if (error) {
-      const file = context?.file ?? ''
-      const spec = file.split(/[\\/]/).pop()?.replace(/\.spec\.ts$/, '') ?? 'unknown'
-      const name = `FAIL-${String(test.title).replace(/\s+/g, '-')}`
-      await captureFailureScreenshot(spec, name)
+    await captureEndScreenshot()
+    endTest(error ? 'failed' : 'passed')
+  },
+  onComplete: () => {
+    try {
+      generateReport()
+    } catch (e) {
+      console.error('[onComplete] report generation failed:', (e as Error)?.message ?? e)
     }
   },
 }

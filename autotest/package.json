@@ -14,6 +14,7 @@
     "test:gui:ux": "wdio run wdio.conf.ts --spec specs/gui/04-ux.spec.ts",
     "test:gui:all": "npm run test:gui:admin && npm run test:gui && npm run test:gui:apply && npm run test:gui:ux",
     "test:cli": "wdio run wdio.conf.ts --spec specs/cli/*.spec.ts",
+    "report": "tsx src/report/report.ts",
     "compare": "tsx compare/compare.ts"
   },
   "devDependencies": {
