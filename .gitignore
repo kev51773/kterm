@@ -5,3 +5,6 @@ dist/
 
 # Rust / Cargo / Tauri
 /src-tauri/target/
+
+# Code index cache
+.codegraph/

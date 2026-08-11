@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Test runtime output
+logs/
+tmp/
+screenshots/
+artifacts/
+
+# Scratch test-run captures
+/run*.txt
+/full-run*.txt
+/nul
