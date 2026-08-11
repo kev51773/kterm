@@ -214,4 +214,185 @@ mod tests {
         rb2.append(b"user@ubuntu:~$ ");
         assert!(rb2.matches_prompt());
     }
+
+    // ── additional edge cases ───────────────────────────────────────
+
+    #[test]
+    fn test_empty_buffer() {
+        let rb = RingBuffer::new();
+        assert_eq!(rb.get_raw_bytes().len(), 0);
+        assert_eq!(rb.get_total_bytes_written(), 0);
+        assert!(rb.get_text(true).is_empty());
+        assert!(rb.read_tail_lines(10, true).is_empty());
+        assert!(!rb.matches_prompt());
+        assert!(!rb.contains_pattern("anything"));
+    }
+
+    #[test]
+    fn test_single_byte_append() {
+        let rb = RingBuffer::with_capacity(4);
+        rb.append(b"A");
+        assert_eq!(rb.get_raw_bytes(), b"A");
+        rb.append(b"B");
+        assert_eq!(rb.get_raw_bytes(), b"AB");
+    }
+
+    #[test]
+    fn test_exact_capacity_fill() {
+        let rb = RingBuffer::with_capacity(5);
+        rb.append(b"12345");
+        assert_eq!(rb.get_raw_bytes(), b"12345");
+        assert_eq!(rb.get_total_bytes_written(), 5);
+    }
+
+    #[test]
+    fn test_overflow_evicts_front() {
+        let rb = RingBuffer::with_capacity(3);
+        rb.append(b"ABCDE");
+        assert_eq!(rb.get_raw_bytes(), b"CDE");
+        assert_eq!(rb.get_total_bytes_written(), 5);
+    }
+
+    #[test]
+    fn test_overflow_multiple_appends() {
+        let rb = RingBuffer::with_capacity(4);
+        rb.append(b"AB");
+        rb.append(b"CD");
+        rb.append(b"EF");
+        assert_eq!(rb.get_raw_bytes(), b"CDEF");
+        assert_eq!(rb.get_total_bytes_written(), 6);
+    }
+
+    #[test]
+    fn test_get_text_strips_ansi() {
+        let rb = RingBuffer::new();
+        rb.append(b"\x1b[31mRED\x1b[0m normal");
+        assert_eq!(rb.get_text(true), "RED normal");
+        assert!(rb.get_text(false).contains("\x1b[31m"));
+    }
+
+    #[test]
+    fn test_get_text_from_offset_empty() {
+        let rb = RingBuffer::new();
+        rb.append(b"hello");
+        let offset = rb.get_total_bytes_written();
+        assert!(rb.get_text_from_offset(offset, true).is_empty());
+    }
+
+    #[test]
+    fn test_get_text_from_offset_partial() {
+        let rb = RingBuffer::new();
+        rb.append(b"hello world");
+        let text = rb.get_text_from_offset(6, true);
+        assert_eq!(text, "world");
+    }
+
+    #[test]
+    fn test_read_tail_lines_fewer_than_requested() {
+        let rb = RingBuffer::new();
+        rb.append(b"line1\nline2\n");
+        let lines = rb.read_tail_lines(100, true);
+        assert_eq!(lines, vec!["line1", "line2"]);
+    }
+
+    #[test]
+    fn test_read_tail_lines_skips_blank_leading() {
+        let rb = RingBuffer::new();
+        rb.append(b"\n\n\nline1\nline2\n");
+        let lines = rb.read_tail_lines(10, true);
+        assert_eq!(lines, vec!["line1", "line2"]);
+    }
+
+    #[test]
+    fn test_read_tail_lines_single_line() {
+        let rb = RingBuffer::new();
+        rb.append(b"only one line");
+        let lines = rb.read_tail_lines(5, true);
+        assert_eq!(lines, vec!["only one line"]);
+    }
+
+    #[test]
+    fn test_contains_pattern_empty_pattern() {
+        let rb = RingBuffer::new();
+        assert!(rb.contains_pattern(""));
+    }
+
+    #[test]
+    fn test_contains_pattern_regex() {
+        let rb = RingBuffer::new();
+        rb.append(b"Error code: 42 at line 7");
+        assert!(rb.contains_pattern(r"Error code: \d+"));
+        assert!(rb.contains_pattern(r"line \d+"));
+        assert!(!rb.contains_pattern(r"Error code: \d{3,}"));
+    }
+
+    #[test]
+    fn test_contains_pattern_from_offset_old_ignored() {
+        let rb = RingBuffer::new();
+        rb.append(b"old output\n");
+        let offset = rb.get_total_bytes_written();
+        rb.append(b"new output\n");
+        assert!(!rb.contains_pattern_from_offset(offset, "old output"));
+        assert!(rb.contains_pattern_from_offset(offset, "new output"));
+    }
+
+    #[test]
+    fn test_matches_prompt_variants() {
+        for prompt in &[
+            "PS C:\\> ",
+            "user@host:~$ ",
+            "# ",
+            "C:\\Windows> ",
+        ] {
+            let rb = RingBuffer::new();
+            rb.append(prompt.as_bytes());
+            assert!(rb.matches_prompt(), "expected prompt match for: {}", prompt);
+        }
+    }
+
+    #[test]
+    fn test_matches_prompt_not_prompt() {
+        let rb = RingBuffer::new();
+        rb.append(b"just some output text\n");
+        assert!(!rb.matches_prompt());
+    }
+
+    #[test]
+    fn test_matches_prompt_multiline_last_line() {
+        let rb = RingBuffer::new();
+        rb.append(b"line1\nline2\nPS C:\\Users> ");
+        assert!(rb.matches_prompt());
+    }
+
+    #[test]
+    fn test_strip_ansi_cursor_positioning() {
+        let rb = RingBuffer::new();
+        rb.append(b"\x1b[24;1Hline at bottom");
+        let text = rb.get_text(true);
+        assert!(text.contains("line at bottom"));
+        assert!(!text.contains("\x1b[24;1H"));
+    }
+
+    #[test]
+    fn test_strip_ansi_complex() {
+        let input = "\x1b[1;32mBold Green\x1b[0m \x1b[4mUnderlined\x1b[24m";
+        let result = strip_ansi(input);
+        assert_eq!(result, "Bold Green Underlined");
+    }
+
+    #[test]
+    fn test_capacity_one() {
+        let rb = RingBuffer::with_capacity(1);
+        rb.append(b"ABC");
+        assert_eq!(rb.get_raw_bytes(), b"C");
+    }
+
+    #[test]
+    fn test_large_append() {
+        let rb = RingBuffer::with_capacity(100);
+        let data = vec![b'X'; 200];
+        rb.append(&data);
+        assert_eq!(rb.get_raw_bytes().len(), 100);
+        assert_eq!(rb.get_total_bytes_written(), 200);
+    }
 }

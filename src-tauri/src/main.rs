@@ -14,7 +14,367 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use daemon::{AppState, TabInfo};
+    use std::sync::atomic::{AtomicU16, Ordering};
+    use std::time::Duration;
+
+    static PORT_COUNTER: AtomicU16 = AtomicU16::new(19900);
+
+    fn next_port() -> u16 {
+        PORT_COUNTER.fetch_add(1, Ordering::SeqCst)
+    }
+
+    fn make_state() -> AppState {
+        AppState {
+            pty_manager: PtyManager::new(),
+            app_handle: None,
+            window_titles: Arc::new(Mutex::new(HashMap::new())),
+            window_layouts: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn start_daemon() -> u16 {
+        let port = next_port();
+        let state = make_state();
+        tokio::spawn(async move {
+            daemon::run_server(&format!("127.0.0.1:{}", port), state).await;
+        });
+        let c = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2)).build().unwrap();
+        for _ in 0..50 {
+            if c.get(format!("http://127.0.0.1:{}/health", port)).send().await.is_ok() { return port; }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("Daemon failed to start on port {}", port);
+    }
+
+    fn http(port: u16) -> reqwest::Client {
+        let _ = port;
+        reqwest::Client::builder().timeout(Duration::from_secs(30)).build().unwrap()
+    }
+
+    fn base(port: u16) -> String {
+        format!("http://127.0.0.1:{}", port)
+    }
+
+    #[tokio::test]
+    async fn health_check() {
+        let port = start_daemon().await;
+        let b = base(port);
+        assert!(http(port).get(format!("{}/health", b)).send().await.unwrap().status().is_success());
+    }
+
+    #[tokio::test]
+    async fn spawn_tab_default() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        assert_eq!(tab.profile, "powershell");
+        assert!(!tab.id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn spawn_tab_cmd() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b))
+            .json(&serde_json::json!({ "profile": "cmd" }))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        assert_eq!(tab.profile, "cmd");
+    }
+
+    #[tokio::test]
+    async fn list_tabs_empty_initially() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tabs: Vec<TabInfo> = http(port).get(format!("{}/tabs", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert!(tabs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_tabs_after_spawn() {
+        let port = start_daemon().await;
+        let b = base(port);
+        http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({})).send().await.unwrap();
+        http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({ "profile": "cmd" })).send().await.unwrap();
+        let tabs: Vec<TabInfo> = http(port).get(format!("{}/tabs", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert!(tabs.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn close_tab_removes() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        http(port).post(format!("{}/tabs/close", b))
+            .json(&serde_json::json!({ "targets": [tab.id] }))
+            .send().await.unwrap();
+        let tabs: Vec<TabInfo> = http(port).get(format!("{}/tabs", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert!(!tabs.iter().any(|t| t.id == tab.id));
+    }
+
+    #[tokio::test]
+    async fn set_title() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        http(port).post(format!("{}/tabs/title", b))
+            .json(&serde_json::json!({ "targets": [tab.id], "title": "My Server" }))
+            .send().await.unwrap();
+        let tabs: Vec<TabInfo> = http(port).get(format!("{}/tabs", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert_eq!(tabs.iter().find(|t| t.id == tab.id).unwrap().title, "My Server");
+    }
+
+    #[tokio::test]
+    async fn set_badge() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        http(port).post(format!("{}/tabs/badge", b))
+            .json(&serde_json::json!({ "targets": [tab.id], "badge": "PROD" }))
+            .send().await.unwrap();
+        let tabs: Vec<TabInfo> = http(port).get(format!("{}/tabs", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert_eq!(tabs.iter().find(|t| t.id == tab.id).unwrap().badge.as_deref(), Some("PROD"));
+    }
+
+    #[tokio::test]
+    async fn set_color() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        http(port).post(format!("{}/tabs/color", b))
+            .json(&serde_json::json!({ "targets": [tab.id], "color": "#E53935" }))
+            .send().await.unwrap();
+        let tabs: Vec<TabInfo> = http(port).get(format!("{}/tabs", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert_eq!(tabs.iter().find(|t| t.id == tab.id).unwrap().color.as_deref(), Some("#E53935"));
+    }
+
+    #[tokio::test]
+    async fn send_text() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        let r = http(port).post(format!("{}/tabs/send", b))
+            .json(&serde_json::json!({ "targets": [tab.id], "command": "echo hello" }))
+            .send().await.unwrap();
+        assert!(r.status().is_success());
+    }
+
+    #[tokio::test]
+    async fn read_output() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        http(port).post(format!("{}/tabs/send", b))
+            .json(&serde_json::json!({ "targets": [tab.id], "command": "echo testoutput" }))
+            .send().await.unwrap();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let body: serde_json::Value = http(port)
+            .get(format!("{}/tabs/{}/read?tail=10", b, tab.id))
+            .send().await.unwrap().json().await.unwrap();
+        assert!(!body["lines"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn split_right() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        let body: serde_json::Value = http(port)
+            .post(format!("{}/tabs/{}/split", b, tab.id))
+            .json(&serde_json::json!({ "direction": "right", "profile": "cmd" }))
+            .send().await.unwrap().json().await.unwrap();
+        let new_id = body["new_tab_id"].as_str().unwrap();
+        assert!(!new_id.is_empty());
+        assert_ne!(new_id, &tab.id);
+    }
+
+    #[tokio::test]
+    async fn split_down() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        let r = http(port).post(format!("{}/tabs/{}/split", b, tab.id))
+            .json(&serde_json::json!({ "direction": "down" })).send().await.unwrap();
+        assert!(r.status().is_success());
+    }
+
+    #[tokio::test]
+    async fn unsplit() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        let split: serde_json::Value = http(port)
+            .post(format!("{}/tabs/{}/split", b, tab.id))
+            .json(&serde_json::json!({ "direction": "right" }))
+            .send().await.unwrap().json().await.unwrap();
+        let new_id = split["new_tab_id"].as_str().unwrap();
+        let r = http(port).post(format!("{}/tabs/{}/unsplit", b, new_id)).send().await.unwrap();
+        assert!(r.status().is_success());
+    }
+
+    #[tokio::test]
+    async fn explode() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        http(port).post(format!("{}/tabs/{}/split", b, tab.id))
+            .json(&serde_json::json!({ "direction": "right" })).send().await.unwrap();
+        let r = http(port).post(format!("{}/tabs/{}/explode", b, tab.id)).send().await.unwrap();
+        assert!(r.status().is_success());
+        let body: serde_json::Value = r.json().await.unwrap();
+        assert!(body["exploded_tab_ids"].as_array().unwrap().len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn apply_yaml_dry_run() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let r = http(port).post(format!("{}/apply", b)).json(&serde_json::json!({
+            "yaml": "window:\n  id: null\ntabs:\n- profile: powershell\n",
+            "dry_run": true
+        })).send().await.unwrap();
+        assert!(r.status().is_success());
+        let body: serde_json::Value = r.json().await.unwrap();
+        assert_eq!(body["status"].as_str().unwrap(), "valid");
+    }
+
+    #[tokio::test]
+    async fn apply_yaml_invalid_profile() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let r = http(port).post(format!("{}/apply", b)).json(&serde_json::json!({
+            "yaml": "window:\n  id: null\ntabs:\n- profile: fish\n",
+            "dry_run": true
+        })).send().await.unwrap();
+        assert!(r.status().is_client_error());
+    }
+
+    #[tokio::test]
+    async fn apply_yaml_creates_tab() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let r = http(port).post(format!("{}/apply", b)).json(&serde_json::json!({
+            "yaml": "window:\n  id: null\ntabs:\n- profile: powershell\n"
+        })).send().await.unwrap();
+        assert!(r.status().is_success());
+        let body: serde_json::Value = r.json().await.unwrap();
+        assert_eq!(body["status"].as_str().unwrap(), "ok");
+    }
+
+    #[tokio::test]
+    async fn apply_yaml_with_splits() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let yaml = r#"window:
+  id: null
+tabs:
+- profile: powershell
+  splits:
+  - direction: right
+    profile: cmd
+"#;
+        let r = http(port).post(format!("{}/apply", b)).json(&serde_json::json!({ "yaml": yaml }))
+            .send().await.unwrap();
+        assert!(r.status().is_success());
+        let body: serde_json::Value = r.json().await.unwrap();
+        let win_id = body["window_id"].as_str().unwrap();
+        let tabs: Vec<TabInfo> = http(port)
+            .get(format!("{}/tabs?window={}", b, win_id))
+            .send().await.unwrap().json().await.unwrap();
+        assert!(tabs.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn config_roundtrip() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let mut cfg: serde_json::Value = http(port).get(format!("{}/config", b))
+            .send().await.unwrap().json().await.unwrap();
+        let orig = cfg["default_cols"].as_u64().unwrap();
+        cfg["default_cols"] = serde_json::json!(80);
+        http(port).post(format!("{}/config", b)).json(&cfg).send().await.unwrap();
+        let saved: serde_json::Value = http(port).get(format!("{}/config", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert_eq!(saved["default_cols"].as_u64().unwrap(), 80);
+        cfg["default_cols"] = serde_json::json!(orig);
+        http(port).post(format!("{}/config", b)).json(&cfg).send().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn build_id() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let body: serde_json::Value = http(port).get(format!("{}/build_id", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert_eq!(body["build_id"].as_str().unwrap(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[tokio::test]
+    async fn layout_after_split() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        http(port).post(format!("{}/tabs/{}/split", b, tab.id))
+            .json(&serde_json::json!({ "direction": "right" })).send().await.unwrap();
+        let body: serde_json::Value = http(port)
+            .get(format!("{}/layout?window=win-1", b))
+            .send().await.unwrap().json().await.unwrap();
+        assert!(body.as_array().unwrap().len() > 0);
+        assert_eq!(body[0]["type"].as_str().unwrap(), "split");
+    }
+
+    #[tokio::test]
+    async fn tab_not_found_404() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let r = http(port).post(format!("{}/tabs/tab-99999/split", b))
+            .json(&serde_json::json!({ "direction": "right" })).send().await.unwrap();
+        assert!(r.status().is_client_error());
+    }
+
+    #[tokio::test]
+    async fn resize_tab() {
+        let port = start_daemon().await;
+        let b = base(port);
+        let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
+            .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        let r = http(port).post(format!("{}/tabs/{}/resize", b, tab.id))
+            .json(&serde_json::json!({ "cols": 100, "rows": 25 })).send().await.unwrap();
+        assert!(r.status().is_success());
+    }
+}
+
 fn main() {
+    let args_db: Vec<String> = std::env::args().collect();
+    let wv_args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+    let wv_udf = std::env::var("WEBVIEW2_USER_DATA_FOLDER").unwrap_or_default();
+    let _ = std::fs::write(
+        format!(r"C:\Users\Kev\Desktop\kterm\autotest\tmp\launch-dump-{}.txt", std::process::id()),
+        format!("{:?}\nWV_ARGS={}\nWV_UDF={}", args_db, wv_args, wv_udf),
+    );
+
     if std::env::args().any(|a| a == "--help" || a == "-h") {
         cli::print_help();
         std::process::exit(0);
@@ -101,6 +461,24 @@ fn run_host_daemon(args: CliArgs) {
             let cfg = crate::config::AppConfig::load();
             let (default_w, default_h) = cfg.get_default_window_size();
 
+            if app.get_webview_window("win-1").is_none() {
+                if let Some(win_cfg) = app.config().app.windows.iter().find(|w| w.label == "win-1") {
+                    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), win_cfg)
+                        .map_err(|e| e.to_string())?;
+                    if let Ok(args) = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+                        if !args.is_empty() {
+                            builder = builder.additional_browser_args(&args);
+                        }
+                    }
+                    if let Ok(udf) = std::env::var("WEBVIEW2_USER_DATA_FOLDER") {
+                        if !udf.is_empty() {
+                            builder = builder.data_directory(std::path::PathBuf::from(udf));
+                        }
+                    }
+                    let _ = builder.build();
+                }
+            }
+
             if let Some(window) = app.get_webview_window("win-1") {
                 let _ = window.set_title("kterm.exe - A scriptable terminal - win-1");
                 let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: default_w, height: default_h }));
@@ -132,10 +510,15 @@ fn run_host_daemon(args: CliArgs) {
                 let daemon_state_apply = daemon_state.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
-                    if let Ok(content) = std::fs::read_to_string(&file_path) {
-                        if let Ok(spec) = serde_yaml::from_str::<crate::yaml::YamlSessionSpec>(&content) {
+                    let content = std::fs::read_to_string(&file_path);
+                    match content {
+                        Ok(content) => match serde_yaml::from_str::<crate::yaml::YamlSessionSpec>(&content) {
+                        Ok(spec) => {
                             let _ = crate::yaml::apply_yaml_spec(&daemon_state_apply, &spec, Some("win-1"), None, false);
                         }
+                            Err(e) => { eprintln!("[kterm] yaml parse err: {}", e); }
+                        },
+                        Err(e) => { eprintln!("[kterm] read err: {} path={}", e, file_path); }
                     }
                 });
             }

@@ -77,17 +77,31 @@ fn default_cols() -> u16 {
 fn default_rows() -> u16 {
     30
 }
+fn default_profile() -> String {
+    "powershell".to_string()
+}
+fn default_ring_buffer_kb() -> usize {
+    256
+}
+fn default_terminal_padding() -> u32 {
+    8
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    #[serde(default = "default_profile")]
     pub default_profile: String,
     #[serde(default = "default_cols")]
     pub default_cols: u16,
     #[serde(default = "default_rows")]
     pub default_rows: u16,
+    #[serde(default = "default_ring_buffer_kb")]
     pub ring_buffer_kb: usize,
+    #[serde(default = "default_terminal_padding")]
     pub terminal_padding: u32,
+    #[serde(default)]
     pub font: FontConfig,
+    #[serde(default)]
     pub theme: ThemeConfig,
 }
 
@@ -163,5 +177,124 @@ mod tests {
         assert_eq!(cfg.default_profile, "powershell");
         assert_eq!(cfg.ring_buffer_kb, 256);
         assert_eq!(cfg.terminal_padding, 8);
+    }
+
+    #[test]
+    fn test_default_font() {
+        let font = FontConfig::default();
+        assert_eq!(font.size, 14);
+        assert!(font.family.contains("Consolas"));
+    }
+
+    #[test]
+    fn test_default_theme() {
+        let theme = ThemeConfig::default();
+        assert_eq!(theme.background, "#0d0e11");
+        assert_eq!(theme.foreground, "#cccccc");
+        assert_eq!(theme.highlight, "#61afef");
+    }
+
+    #[test]
+    fn test_get_default_window_size() {
+        let cfg = AppConfig::default();
+        let (w, h) = cfg.get_default_window_size();
+        // cols=120, cell_w=8.42, pad=16, so w = 120*8.42 + 16 + 16 = 1042.4 -> 1043
+        assert!(w > 1000.0);
+        assert!(w < 1100.0);
+        // rows=30, cell_h=17, pad=16, so h = 30*17 + 41 + 16 = 567
+        assert!(h > 500.0);
+        assert!(h < 650.0);
+    }
+
+    #[test]
+    fn test_get_default_window_size_custom() {
+        let cfg = AppConfig {
+            default_cols: 80,
+            default_rows: 24,
+            terminal_padding: 0,
+            ..AppConfig::default()
+        };
+        let (w, h) = cfg.get_default_window_size();
+        // 80*8.42 + 16 + 0 = 689.6 -> 690
+        assert!(w > 680.0 && w < 700.0);
+        // 24*17 + 41 + 0 = 449
+        assert!(h > 440.0 && h < 460.0);
+    }
+
+    #[test]
+    fn test_get_config_path() {
+        let path = AppConfig::get_config_path();
+        assert!(path.to_string_lossy().contains("kterm"));
+        assert!(path.to_string_lossy().ends_with("config.json"));
+    }
+
+    #[test]
+    fn test_save_and_load() {
+        let test_dir = std::env::temp_dir().join("kterm_test_config");
+        let _ = std::fs::create_dir_all(&test_dir);
+        let test_path = test_dir.join("config.json");
+
+        let cfg = AppConfig {
+            default_profile: "wsl".into(),
+            default_cols: 100,
+            default_rows: 25,
+            ..AppConfig::default()
+        };
+
+        // Manually write to test path (not using save() since it uses get_config_path)
+        let json = serde_json::to_string_pretty(&cfg).unwrap();
+        std::fs::write(&test_path, &json).unwrap();
+
+        // Read back
+        let content = std::fs::read_to_string(&test_path).unwrap();
+        let loaded: AppConfig = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.default_profile, "wsl");
+        assert_eq!(loaded.default_cols, 100);
+        assert_eq!(loaded.default_rows, 25);
+
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_config_serialization_roundtrip() {
+        let cfg = AppConfig::default();
+        let json = serde_json::to_string(&cfg).unwrap();
+        let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg.default_profile, deserialized.default_profile);
+        assert_eq!(cfg.default_cols, deserialized.default_cols);
+        assert_eq!(cfg.ring_buffer_kb, deserialized.ring_buffer_kb);
+    }
+
+    #[test]
+    fn test_config_partial_json_fills_defaults() {
+        let json = r#"{"default_profile": "cmd"}"#;
+        let cfg: AppConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.default_profile, "cmd");
+        assert_eq!(cfg.default_cols, 120); // default
+        assert_eq!(cfg.ring_buffer_kb, 256); // default
+    }
+
+    #[test]
+    fn test_window_size_zero_cols() {
+        let cfg = AppConfig {
+            default_cols: 0,
+            default_rows: 30,
+            ..AppConfig::default()
+        };
+        let (w, _) = cfg.get_default_window_size();
+        // Falls back to 120 cols
+        assert!(w > 1000.0);
+    }
+
+    #[test]
+    fn test_window_size_zero_rows() {
+        let cfg = AppConfig {
+            default_cols: 120,
+            default_rows: 0,
+            ..AppConfig::default()
+        };
+        let (_, h) = cfg.get_default_window_size();
+        // Falls back to 30 rows
+        assert!(h > 500.0);
     }
 }

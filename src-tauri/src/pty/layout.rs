@@ -139,3 +139,323 @@ impl LayoutNode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── contains_tab ────────────────────────────────────────────────
+
+    #[test]
+    fn pane_contains_its_own_tab() {
+        let node = LayoutNode::Pane { tab_id: "tab-1".into() };
+        assert!(node.contains_tab("tab-1"));
+        assert!(!node.contains_tab("tab-2"));
+    }
+
+    #[test]
+    fn split_contains_both_children() {
+        let root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        assert!(root.contains_tab("tab-1"));
+        assert!(root.contains_tab("tab-2"));
+        assert!(!root.contains_tab("tab-3"));
+    }
+
+    #[test]
+    fn nested_split_contains_deep_tab() {
+        let root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Split {
+                id: "s2".into(),
+                direction: SplitDirection::Vertical,
+                ratio: 0.5,
+                first: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+                second: Box::new(LayoutNode::Pane { tab_id: "tab-3".into() }),
+            }),
+        };
+        assert!(root.contains_tab("tab-1"));
+        assert!(root.contains_tab("tab-2"));
+        assert!(root.contains_tab("tab-3"));
+    }
+
+    // ── collect_tabs ────────────────────────────────────────────────
+
+    #[test]
+    fn collect_tabs_pane() {
+        let node = LayoutNode::Pane { tab_id: "tab-1".into() };
+        assert_eq!(node.collect_tabs(), vec!["tab-1"]);
+    }
+
+    #[test]
+    fn collect_tabs_split() {
+        let root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let tabs = root.collect_tabs();
+        assert_eq!(tabs, vec!["tab-1", "tab-2"]);
+    }
+
+    #[test]
+    fn collect_tabs_nested() {
+        let root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Split {
+                id: "s2".into(),
+                direction: SplitDirection::Vertical,
+                ratio: 0.5,
+                first: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+                second: Box::new(LayoutNode::Pane { tab_id: "tab-3".into() }),
+            }),
+        };
+        assert_eq!(root.collect_tabs(), vec!["tab-1", "tab-2", "tab-3"]);
+    }
+
+    // ── split_at ────────────────────────────────────────────────────
+
+    #[test]
+    fn split_pane_right() {
+        let mut root = LayoutNode::Pane { tab_id: "tab-1".into() };
+        let result = root.split_at("tab-1", SplitDirection::Horizontal, "tab-2", false);
+        assert!(result);
+        assert!(root.contains_tab("tab-1"));
+        assert!(root.contains_tab("tab-2"));
+        if let LayoutNode::Split { direction, ratio, first, second, .. } = &root {
+            assert_eq!(*direction, SplitDirection::Horizontal);
+            assert_eq!(*ratio, 0.5);
+            assert!(first.contains_tab("tab-1"));
+            assert!(second.contains_tab("tab-2"));
+        } else {
+            panic!("expected Split node");
+        }
+    }
+
+    #[test]
+    fn split_pane_left_insert_first() {
+        let mut root = LayoutNode::Pane { tab_id: "tab-1".into() };
+        root.split_at("tab-1", SplitDirection::Horizontal, "tab-2", true);
+        if let LayoutNode::Split { first, second, .. } = &root {
+            assert!(first.contains_tab("tab-2"));
+            assert!(second.contains_tab("tab-1"));
+        } else {
+            panic!("expected Split");
+        }
+    }
+
+    #[test]
+    fn split_pane_down() {
+        let mut root = LayoutNode::Pane { tab_id: "tab-1".into() };
+        root.split_at("tab-1", SplitDirection::Vertical, "tab-2", false);
+        assert!(root.contains_tab("tab-1"));
+        assert!(root.contains_tab("tab-2"));
+    }
+
+    #[test]
+    fn split_nonexistent_tab_returns_false() {
+        let mut root = LayoutNode::Pane { tab_id: "tab-1".into() };
+        let result = root.split_at("tab-999", SplitDirection::Horizontal, "tab-2", false);
+        assert!(!result);
+    }
+
+    #[test]
+    fn split_deep_tab() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let result = root.split_at("tab-2", SplitDirection::Vertical, "tab-3", false);
+        assert!(result);
+        assert!(root.contains_tab("tab-3"));
+    }
+
+    // ── remove_tab ──────────────────────────────────────────────────
+
+    #[test]
+    fn remove_tab_from_split_promotes_sibling() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let result = root.remove_tab("tab-1");
+        assert!(result);
+        // After removing tab-1, root should be the Pane for tab-2
+        assert!(root.contains_tab("tab-2"));
+        assert!(!root.contains_tab("tab-1"));
+    }
+
+    #[test]
+    fn remove_tab_not_found() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let result = root.remove_tab("tab-999");
+        assert!(!result);
+        assert!(root.contains_tab("tab-1"));
+        assert!(root.contains_tab("tab-2"));
+    }
+
+    #[test]
+    fn remove_second_tab_promotes_first() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        root.remove_tab("tab-2");
+        assert!(root.contains_tab("tab-1"));
+        assert!(!root.contains_tab("tab-2"));
+    }
+
+    // ── unsplit_pane ────────────────────────────────────────────────
+
+    #[test]
+    fn unsplit_pane_delegates_to_remove() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let result = root.unsplit_pane("tab-1");
+        assert!(result);
+        assert!(!root.contains_tab("tab-1"));
+    }
+
+    // ── update_ratio ────────────────────────────────────────────────
+
+    #[test]
+    fn update_ratio_direct() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let result = root.update_ratio("s1", 0.7);
+        assert!(result);
+        if let LayoutNode::Split { ratio, .. } = &root {
+            assert_eq!(*ratio, 0.7);
+        }
+    }
+
+    #[test]
+    fn update_ratio_clamped_low() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        root.update_ratio("s1", 0.01);
+        if let LayoutNode::Split { ratio, .. } = &root {
+            assert_eq!(*ratio, 0.1);
+        }
+    }
+
+    #[test]
+    fn update_ratio_clamped_high() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        root.update_ratio("s1", 0.99);
+        if let LayoutNode::Split { ratio, .. } = &root {
+            assert_eq!(*ratio, 0.9);
+        }
+    }
+
+    #[test]
+    fn update_ratio_nested() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Split {
+                id: "s2".into(),
+                direction: SplitDirection::Vertical,
+                ratio: 0.5,
+                first: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+                second: Box::new(LayoutNode::Pane { tab_id: "tab-3".into() }),
+            }),
+        };
+        let result = root.update_ratio("s2", 0.3);
+        assert!(result);
+    }
+
+    #[test]
+    fn update_ratio_not_found() {
+        let mut root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let result = root.update_ratio("s999", 0.7);
+        assert!(!result);
+    }
+
+    // ── split_at then remove roundtrip ──────────────────────────────
+
+    #[test]
+    fn split_then_remove_restores() {
+        let mut root = LayoutNode::Pane { tab_id: "tab-1".into() };
+        root.split_at("tab-1", SplitDirection::Horizontal, "tab-2", false);
+        assert!(root.contains_tab("tab-2"));
+        root.remove_tab("tab-2");
+        // Should be back to just tab-1
+        assert!(!root.contains_tab("tab-2"));
+        assert!(root.contains_tab("tab-1"));
+    }
+
+    // ── serialization roundtrip ─────────────────────────────────────
+
+    #[test]
+    fn layout_serde_roundtrip() {
+        let root = LayoutNode::Split {
+            id: "s1".into(),
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane { tab_id: "tab-1".into() }),
+            second: Box::new(LayoutNode::Pane { tab_id: "tab-2".into() }),
+        };
+        let json = serde_json::to_string(&root).unwrap();
+        let deserialized: LayoutNode = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.contains_tab("tab-1"));
+        assert!(deserialized.contains_tab("tab-2"));
+    }
+}

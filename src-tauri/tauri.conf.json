@@ -14,6 +14,7 @@
     "windows": [
       {
         "label": "win-1",
+        "create": false,
         "title": "kterm.exe - A scriptable terminal - win-1",
         "width": 1172,
         "height": 647,

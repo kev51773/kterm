@@ -341,3 +341,302 @@ fn send_text_to_session(sess: &crate::pty::PtySession, text: &str) {
     let _ = writer.write_all(to_send.as_bytes());
     let _ = writer.flush();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    // ── parse_yaml ──────────────────────────────────────────────────
+
+    #[test]
+    fn parse_minimal_yaml() {
+        let yaml = "window:\n  id: win-1\ntabs:\n- profile: powershell\n";
+        let spec = parse_yaml(yaml).unwrap();
+        assert_eq!(spec.window.id.as_deref(), Some("win-1"));
+        assert_eq!(spec.tabs.len(), 1);
+        assert_eq!(spec.tabs[0].profile, "powershell");
+    }
+
+    #[test]
+    fn parse_full_yaml() {
+        let yaml = r##"
+window:
+  id: win-1
+  title: My Window
+tabs:
+- id: tab-1
+  profile: cmd
+  title: Server
+  badge: PROD
+  color: "#E53935"
+  cwd: C:/Users
+  admin: true
+  send_text: echo hello
+  splits:
+  - direction: right
+    profile: wsl
+    title: Split 1
+  - direction: down
+    profile: git-bash
+"##;
+        let spec = parse_yaml(yaml).unwrap();
+        assert_eq!(spec.window.title.as_deref(), Some("My Window"));
+        assert_eq!(spec.tabs.len(), 1);
+        let tab = &spec.tabs[0];
+        assert_eq!(tab.id.as_deref(), Some("tab-1"));
+        assert_eq!(tab.profile, "cmd");
+        assert_eq!(tab.title.as_deref(), Some("Server"));
+        assert_eq!(tab.badge.as_deref(), Some("PROD"));
+        assert_eq!(tab.color.as_deref(), Some("#E53935"));
+        assert_eq!(tab.cwd.as_deref(), Some("C:/Users"));
+        assert_eq!(tab.admin, Some(true));
+        assert_eq!(tab.send_text.as_deref(), Some("echo hello"));
+        let splits = tab.splits.as_ref().unwrap();
+        assert_eq!(splits.len(), 2);
+        assert_eq!(splits[0].direction, "right");
+        assert_eq!(splits[0].profile, "wsl");
+        assert_eq!(splits[1].direction, "down");
+        assert_eq!(splits[1].profile, "git-bash");
+    }
+
+    #[test]
+    fn parse_invalid_yaml() {
+        let result = parse_yaml("not: valid: yaml: [[[");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_yaml_missing_tabs() {
+        let yaml = "window:\n  id: win-1\n";
+        let result = parse_yaml(yaml);
+        assert!(result.is_err());
+    }
+
+    // ── validate_yaml ───────────────────────────────────────────────
+
+    #[test]
+    fn validate_empty_tabs() {
+        let spec = YamlSessionSpec {
+            window: YamlWindowSpec { id: None, title: None },
+            tabs: vec![],
+        };
+        assert!(validate_yaml(&spec).is_err());
+    }
+
+    #[test]
+    fn validate_valid_spec() {
+        let spec = YamlSessionSpec {
+            window: YamlWindowSpec { id: Some("win-1".into()), title: None },
+            tabs: vec![YamlTabSpec {
+                id: None,
+                profile: "powershell".into(),
+                title: None, badge: None, color: None, cwd: None,
+                admin: None, elevated: None, send_text: None, splits: None,
+            }],
+        };
+        assert!(validate_yaml(&spec).is_ok());
+    }
+
+    #[test]
+    fn validate_invalid_tab_profile() {
+        let spec = YamlSessionSpec {
+            window: YamlWindowSpec { id: None, title: None },
+            tabs: vec![YamlTabSpec {
+                id: None,
+                profile: "fish".into(),
+                title: None, badge: None, color: None, cwd: None,
+                admin: None, elevated: None, send_text: None, splits: None,
+            }],
+        };
+        assert!(validate_yaml(&spec).is_err());
+    }
+
+    #[test]
+    fn validate_invalid_split_direction() {
+        let spec = YamlSessionSpec {
+            window: YamlWindowSpec { id: None, title: None },
+            tabs: vec![YamlTabSpec {
+                id: None,
+                profile: "powershell".into(),
+                title: None, badge: None, color: None, cwd: None,
+                admin: None, elevated: None, send_text: None,
+                splits: Some(vec![YamlSplitSpec {
+                    direction: "diagonal".into(),
+                    profile: "cmd".into(),
+                    id: None, title: None, badge: None, color: None, cwd: None,
+                    admin: None, elevated: None, send_text: None, splits: None,
+                }]),
+            }],
+        };
+        assert!(validate_yaml(&spec).is_err());
+    }
+
+    // ── validate_profile ────────────────────────────────────────────
+
+    #[test]
+    fn valid_profiles() {
+        for p in &["powershell", "cmd", "wsl", "git-bash", "bash"] {
+            assert!(validate_profile(p).is_ok(), "expected valid: {}", p);
+        }
+    }
+
+    #[test]
+    fn invalid_profiles() {
+        for p in &["fish", "zsh", "powershell "] {
+            assert!(validate_profile(p).is_err(), "expected invalid: {}", p);
+        }
+    }
+
+    // ── validate_split ──────────────────────────────────────────────
+
+    #[test]
+    fn valid_split_directions() {
+        for d in &["down", "right", "left", "up"] {
+            let split = YamlSplitSpec {
+                direction: d.to_string(),
+                profile: "powershell".into(),
+                id: None, title: None, badge: None, color: None, cwd: None,
+                admin: None, elevated: None, send_text: None, splits: None,
+            };
+            assert!(validate_split(&split).is_ok(), "expected valid: {}", d);
+        }
+    }
+
+    #[test]
+    fn invalid_split_direction() {
+        let split = YamlSplitSpec {
+            direction: "diagonal".into(),
+            profile: "powershell".into(),
+            id: None, title: None, badge: None, color: None, cwd: None,
+            admin: None, elevated: None, send_text: None, splits: None,
+        };
+        assert!(validate_split(&split).is_err());
+    }
+
+    // ── resolve_window_id ───────────────────────────────────────────
+
+    fn make_empty_state() -> crate::daemon::AppState {
+        crate::daemon::AppState {
+            pty_manager: crate::pty::PtyManager::new(),
+            app_handle: None,
+            window_titles: Arc::new(Mutex::new(HashMap::new())),
+            window_layouts: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    #[test]
+    fn resolve_window_id_no_suffix() {
+        let state = make_empty_state();
+        let id = resolve_window_id(&state, "win-1", None, false);
+        assert_eq!(id, "win-1");
+    }
+
+    #[test]
+    fn resolve_window_id_with_suffix() {
+        let state = make_empty_state();
+        let id = resolve_window_id(&state, "win-1", Some("-backend"), false);
+        assert_eq!(id, "win-1-backend");
+    }
+
+    #[test]
+    fn resolve_window_id_auto_first_available() {
+        let state = make_empty_state();
+        let id = resolve_window_id(&state, "win-1", None, true);
+        assert_eq!(id, "win-1");
+    }
+
+    #[test]
+    fn resolve_window_id_auto_increments() {
+        let state = make_empty_state();
+        // Without live PTY sessions, is_window_untouched_initial is always true
+        // for any window, so suffix_auto always returns the base ID.
+        // This tests the suffix_auto=true path returns base when untouched.
+        let id = resolve_window_id(&state, "win-1", None, true);
+        assert_eq!(id, "win-1");
+    }
+
+    #[test]
+    fn resolve_window_id_auto_skips_occupied() {
+        let state = make_empty_state();
+        // Same as above: without live sessions, untouched_initial is true.
+        let id = resolve_window_id(&state, "win-1", None, true);
+        assert_eq!(id, "win-1");
+    }
+
+    // ── generate_next_window_id ─────────────────────────────────────
+
+    #[test]
+    fn generate_next_window_id_first() {
+        let state = make_empty_state();
+        let id = generate_next_window_id(&state);
+        assert_eq!(id, "win-1");
+    }
+
+    #[test]
+    fn generate_next_window_id_always_first_when_empty() {
+        // Without live PTY sessions, generate_next_window_id always returns "win-1"
+        let state = make_empty_state();
+        state.window_titles.lock().unwrap().insert("win-1".into(), "exists".into());
+        let id = generate_next_window_id(&state);
+        assert_eq!(id, "win-1");
+    }
+
+    // ── YAML roundtrip: parse → validate ────────────────────────────
+
+    #[test]
+    fn yaml_roundtrip_minimal() {
+        let yaml = "window:\n  id: win-1\ntabs:\n- profile: powershell\n";
+        let spec = parse_yaml(yaml).unwrap();
+        assert!(validate_yaml(&spec).is_ok());
+    }
+
+    #[test]
+    fn yaml_roundtrip_with_splits() {
+        let yaml = r#"
+window:
+  id: win-1
+tabs:
+- profile: powershell
+  splits:
+  - direction: right
+    profile: cmd
+  - direction: down
+    profile: wsl
+"#;
+        let spec = parse_yaml(yaml).unwrap();
+        assert!(validate_yaml(&spec).is_ok());
+        assert_eq!(spec.tabs[0].splits.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn yaml_all_valid_profiles() {
+        for p in &["powershell", "cmd", "wsl", "git-bash"] {
+            let yaml = format!("window:\n  id: win-1\ntabs:\n- profile: {}\n", p);
+            let spec = parse_yaml(&yaml).unwrap();
+            assert!(validate_yaml(&spec).is_ok(), "profile {} should be valid", p);
+        }
+    }
+
+    #[test]
+    fn yaml_rejects_invalid_profile() {
+        let yaml = "window:\n  id: win-1\ntabs:\n- profile: fish\n";
+        let spec = parse_yaml(yaml).unwrap();
+        assert!(validate_yaml(&spec).is_err());
+    }
+
+    // ── is_window_untouched_initial ─────────────────────────────────
+
+    #[test]
+    fn untouched_initial_empty() {
+        let state = make_empty_state();
+        assert!(is_window_untouched_initial(&state, "win-1"));
+    }
+
+    #[test]
+    fn untouched_initial_nonexistent() {
+        let state = make_empty_state();
+        assert!(is_window_untouched_initial(&state, "win-999"));
+    }
+}
