@@ -22,6 +22,7 @@ function shotName(index: number, title: string): string {
 async function captureEndScreenshot(): Promise<void> {
   const cur = currentTest()
   if (!cur) return
+  if (cur.screenshots.length > 0) return // test already captured its own evidence
   const file = `${cur.spec}/${shotName(cur.index, cur.title)}`
   const abs = path.join(SCREENSHOT_ACTUAL, file)
   try {
