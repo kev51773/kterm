@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Options } from '@wdio/types'
-import { APP_BINARY, APPDATA_DIR, SCREENSHOT_ACTUAL } from './src/helpers/paths.js'
+import { APP_BINARY, APPDATA_DIR, SCREENSHOT_ACTUAL, TMP_DIR } from './src/helpers/paths.js'
 import { ensureIsolatedAppdata, killAllKterm } from './src/helpers/env.js'
 import { startTest, endTest, step, addScreenshot, currentTest, relToAutotest } from './src/helpers/run.js'
 import { generate as generateReport } from './src/report/report.js'
@@ -75,6 +75,20 @@ tabs:
 `)
 }
 
+function cleanTmp(): void {
+  const append = process.env.KTERM_MANIFEST_APPEND === '1'
+  if (!append) {
+    fs.rmSync(TMP_DIR, { recursive: true, force: true })
+  } else {
+    // append mode: keep the manifest the next mode accumulates into
+    for (const entry of fs.readdirSync(TMP_DIR)) {
+      if (entry === 'run-manifest.json') continue
+      fs.rmSync(path.join(TMP_DIR, entry), { recursive: true, force: true })
+    }
+  }
+  fs.mkdirSync(TMP_DIR, { recursive: true })
+}
+
 export const config: Options.Testrunner = {
   runner: 'local',
   specs: ['./specs/gui/*.spec.ts', './specs/cli/*.spec.ts'],
@@ -112,6 +126,7 @@ export const config: Options.Testrunner = {
     },
   ],
   onPrepare: () => {
+    cleanTmp()
     killAllKterm()
     ensureIsolatedAppdata()
     writeBootFixtures()
