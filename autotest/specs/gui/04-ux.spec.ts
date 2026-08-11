@@ -142,44 +142,53 @@ describe('04-ux', () => {
     await captureScreenshot('04-ux', '02-highlights-removed')
   })
 
-  it('3. Keyboard: prev cycle, jump-to-index, split, unsplit', async () => {
+  it('3. Keyboard: previous tab', async () => {
     await resetGuiState()
     const b0 = tabIds()
     step('Clicked the "+" add tab button')
     await (await $('#add-tab-btn')).click()
     await waitForUiTabs(2)
-    const t1 = b0[0]
-    const t2 = freshTabId(b0)
-    setTabTitle(t1, 'ux-k1')
-    setTabTitle(t2, 'ux-k2')
+    setTabTitle(b0[0], 'ux-k1')
+    setTabTitle(freshTabId(b0), 'ux-k2')
     await waitForTabTitle('ux-k2')
-
     step('Pressed Ctrl+Shift+Tab (previous tab)')
     await browser.keys(['Control', 'Shift', 'Tab'])
     await waitForTabTitle('ux-k1')
     await captureScreenshot('04-ux', '03-kbd-prev')
+  })
 
-    step('Pressed Ctrl+Shift+2 (jump to tab index 2)')
-    await browser.keys(['Control', 'Shift', '2'])
-    await waitForTabTitle('ux-k2')
+  it('4. Keyboard: jump to tab index', async () => {
+    await resetGuiState()
+    const b0 = tabIds()
+    step('Clicked the "+" add tab button')
+    await (await $('#add-tab-btn')).click()
+    await waitForUiTabs(2)
+    setTabTitle(b0[0], 'ux-j1')
+    setTabTitle(freshTabId(b0), 'ux-j2')
+    await waitForTabTitle('ux-j2')
     step('Pressed Ctrl+Shift+1 (jump to tab index 1)')
     await browser.keys(['Control', 'Shift', '1'])
-    await waitForTabTitle('ux-k1')
+    await waitForTabTitle('ux-j1')
+    step('Pressed Ctrl+Shift+2 (jump to tab index 2)')
+    await browser.keys(['Control', 'Shift', '2'])
+    await waitForTabTitle('ux-j2')
+    await captureScreenshot('04-ux', '04-kbd-jump')
+  })
 
+  it('5. Keyboard: split / unsplit', async () => {
+    await resetGuiState()
     step('Focused the terminal pane')
     await focusTerminal()
     step('Pressed Ctrl+Shift+→ (split right)')
     await browser.keys(['Control', 'Shift', 'ArrowRight'])
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 2, { timeout: 10000 })
-    await captureScreenshot('04-ux', '03-kbd-split')
-
+    await captureScreenshot('04-ux', '05-kbd-split')
     step('Pressed Ctrl+Shift+W (unsplit)')
     await browser.keys(['Control', 'Shift', 'w'])
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 1, { timeout: 10000 })
-    await resetGuiState()
   })
 
-  it('4. Paste from clipboard', async () => {
+  it('6. Paste from clipboard', async () => {
     await resetGuiState()
     const t = await firstTabId()
     waitForPrompt(t, 30)
@@ -190,14 +199,14 @@ describe('04-ux', () => {
     step('Pressed Ctrl+V (paste)')
     await browser.keys(['Control', 'v'])
     waitFor(t, 'KTERM-PASTE-DEMO-8842', 30)
-    await captureScreenshot('04-ux', '04-paste')
+    await captureScreenshot('04-ux', '06-paste')
     sendText(t, '')
     waitForPrompt(t, 15)
     step('Cleared the clipboard')
     setClipboard(' ')
   })
 
-  it('5. Smart Ctrl+C: copy selection to clipboard', async () => {
+  it('7. Smart Ctrl+C: copy selection to clipboard', async () => {
     await resetGuiState()
     const t = await firstTabId()
     waitForPrompt(t, 30)
@@ -216,10 +225,10 @@ describe('04-ux', () => {
       interval: 300,
     })
     await browser.waitUntil(async () => (await $$('.xterm-selection div').length) === 0, { timeout: 5000 })
-    await captureScreenshot('04-ux', '05-copy')
+    await captureScreenshot('04-ux', '07-copy')
   })
 
-  it('6. Split divider drag resizes the pane ratio', async () => {
+  it('8. Split divider drag resizes the pane ratio', async () => {
     await resetGuiState()
     const t = await firstTabId()
     splitTab(t, 'right', 'powershell')
@@ -245,7 +254,7 @@ describe('04-ux', () => {
       .perform()
 
     await browser.waitUntil(async () => (await splitRatio()) > before + 0.05, { timeout: 10000 })
-    await captureScreenshot('04-ux', '07-drag-resize')
+    await captureScreenshot('04-ux', '08-drag-resize')
     unsplit(t)
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 1, { timeout: 10000 })
   })

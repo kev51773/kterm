@@ -77,8 +77,12 @@ tabs:
 
 function cleanTmp(): void {
   const append = process.env.KTERM_MANIFEST_APPEND === '1'
+  // Screenshots are the report's evidence: wipe them only on a fresh GUI run
+  // (append modes need the earlier modes' shots; CLI runs must not nuke them).
+  const gui = /specs[\\/]gui/.test(process.argv.join(' '))
   if (!append) {
     fs.rmSync(TMP_DIR, { recursive: true, force: true })
+    if (gui) fs.rmSync(SCREENSHOT_ACTUAL, { recursive: true, force: true })
   } else {
     // append mode: keep the manifest the next mode accumulates into
     for (const entry of fs.readdirSync(TMP_DIR)) {
@@ -87,6 +91,7 @@ function cleanTmp(): void {
     }
   }
   fs.mkdirSync(TMP_DIR, { recursive: true })
+  fs.mkdirSync(SCREENSHOT_ACTUAL, { recursive: true })
 }
 
 export const config: Options.Testrunner = {

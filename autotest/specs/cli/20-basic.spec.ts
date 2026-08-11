@@ -1,5 +1,5 @@
 import { expect } from '@wdio/globals'
-import { cliOk, listWindows, listTabs, spawnTab, closeTab, normalizeWindow } from '../../src/helpers/daemon.js'
+import { cliOk, listWindows, listTabs, spawnTab, closeTab, normalizeWindow, newWindow, closeWindow } from '../../src/helpers/daemon.js'
 
 describe('20-basic', () => {
   after(() => normalizeWindow('win-1'))
@@ -30,5 +30,13 @@ describe('20-basic', () => {
     expect(listTabs('win-1').length).toBe(before + 1)
     closeTab(tab)
     expect(listTabs('win-1').length).toBe(before)
+  })
+
+  it('creates and closes a window', () => {
+    const before = listWindows().length
+    const winId = newWindow()
+    expect(listWindows().length).toBe(before + 1)
+    closeWindow(winId)
+    expect(listWindows().length).toBe(before)
   })
 })

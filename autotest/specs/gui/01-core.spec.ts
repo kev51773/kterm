@@ -2,8 +2,7 @@ import { $, $$, browser } from '@wdio/globals'
 import { focusTerminal, openContextMenu, waitForTabCount as waitForUiTabs } from '../../src/helpers/ui.js'
 import { resetGuiState, settle, activeTabTitle } from '../../src/helpers/state.js'
 import {
-  listTabs, listWindows, newWindow, closeWindow, spawnTab,
-  setTabTitle, waitForPrompt, waitFor, sendText, splitTab,
+  listTabs, spawnTab, setTabTitle, waitForPrompt, waitFor, sendText, splitTab,
 } from '../../src/helpers/daemon.js'
 import { captureScreenshot } from '../../src/helpers/screenshot.js'
 import { step } from '../../src/helpers/run.js'
@@ -92,8 +91,10 @@ describe('01-core (default boot)', () => {
     await waitForUiTabs(1)
     step('Focused the terminal pane')
     await focusTerminal()
-    setTabTitle(tabByProfile('powershell'), 'test-01')
+    const shell = tabByProfile('powershell')
+    setTabTitle(shell, 'test-01')
     await waitForTabTitle('test-01')
+    echoText(shell, 'Test-01 - boot shell is live', 30)
     await captureScreenshot('01-core', '01-boot-shell')
   })
 
@@ -114,6 +115,7 @@ describe('01-core (default boot)', () => {
     await waitForUiTabs(2)
     setTabTitle(freshTabId(before), 'test-03-temp')
     await waitForTabTitle('test-03-temp')
+    await captureScreenshot('01-core', '03-close-tab-open')
     step('Clicked the close button on the last tab')
     await clickTabCloseOnLastTab()
     await waitForUiTabs(1)
@@ -286,20 +288,7 @@ describe('01-core (default boot)', () => {
     await input.waitForExist({ timeout: 5000, reverse: true })
   })
 
-  it('14. Second window', async () => {
-    const before = listWindows().length
-    const winId = newWindow()
-    await browser.waitUntil(() => listWindows().length === before + 1, { timeout: 10000, interval: 200 })
-    // ponytail: physical teardown cannot be asserted under a WebDriver session —
-    // tauri-driver's WebView2 automation holds every window open (both win.close()
-    // and win.destroy() return Ok yet the webview never destroys). Verified working
-    // standalone and in manual use. Here we assert the daemon accepts the close.
-    expect(() => closeWindow(winId)).not.toThrow()
-    await captureScreenshot('01-core', '14-second-window')
-    await resetGuiState()
-  })
-
-  it('15. Multi-shell walk (cmd, git-bash, wsl)', async function () {
+  it('14. Multi-shell walk (cmd, git-bash, wsl)', async function () {
     this.timeout(600000)
     const SHELLS = [
       { profile: 'cmd', marker: 'KTERM-CMD-SHELL-OK', prompt: 60, echo: 60 },
@@ -314,12 +303,12 @@ describe('01-core (default boot)', () => {
       // diverge. Wait on daemon truth; expectTabTitleVisible is the UI barrier.
       await waitForTabCountDaemon(before.length + 1)
       const fresh = freshTabId(before)
-      setTabTitle(fresh, `test-15-${s.profile}`)
+      setTabTitle(fresh, `test-14-${s.profile}`)
 
       const titled = listTabs('win-1').find((t) => t.id === fresh)
       expect(titled).toBeDefined()
-      expect(titled!.title).toBe(`test-15-${s.profile}`)
-      await expectTabTitleVisible(`test-15-${s.profile}`)
+      expect(titled!.title).toBe(`test-14-${s.profile}`)
+      await expectTabTitleVisible(`test-14-${s.profile}`)
 
       waitForPrompt(fresh, s.prompt)
       sendText(fresh, `echo ${s.marker}`)
@@ -328,10 +317,10 @@ describe('01-core (default boot)', () => {
       splitTab(fresh, 'right', s.profile)
       const splitPane = listTabs('win-1').find((t) => t.id !== fresh && t.profile === s.profile)
       expect(splitPane).toBeDefined()
-      await expectTabTitleVisible(`[test-15-${s.profile}]`, 15000)
+      await expectTabTitleVisible(`[test-14-${s.profile}]`, 15000)
 
       await browser.pause(800)
-      await captureScreenshot('01-core', `15-shell-${s.profile}`)
+      await captureScreenshot('01-core', `14-shell-${s.profile}`)
     }
   })
 })
