@@ -18,7 +18,17 @@ export interface RunManifest {
 
 export const MANIFEST_PATH = path.join(TMP_DIR, 'run-manifest.json')
 
-const tests: RunTest[] = []
+function loadExisting(): RunTest[] {
+  try {
+    return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')).tests
+  } catch {
+    return []
+  }
+}
+
+// KTERM_MANIFEST_APPEND=1: continue the previous run's manifest (multi-spec
+// combined report, e.g. test:gui:all). Default: fresh manifest per run.
+const tests: RunTest[] = process.env.KTERM_MANIFEST_APPEND === '1' ? loadExisting() : []
 let current: RunTest | null = null
 let lastSpec: string | null = null
 const specCounters: Record<string, number> = {}
