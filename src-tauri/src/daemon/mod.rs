@@ -585,6 +585,20 @@ async fn create_window(
         .title(&window_title)
         .inner_size(default_w, default_h);
 
+        // WebView2 allows only one set of additional browser args per process:
+        // a second env with different args fails with 0x8007139F. Match win-1's
+        // args so multi-window works when launched with custom args (e.g. the
+        // test driver's).
+        let builder = if let Ok(args) = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+            if !args.is_empty() {
+                builder.additional_browser_args(&args)
+            } else {
+                builder
+            }
+        } else {
+            builder
+        };
+
         let window = builder
             .build()
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

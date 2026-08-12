@@ -25,7 +25,7 @@ export function readUserConfig(): Record<string, unknown> | null {
 }
 
 export function killAllKterm(): void {
-  for (const name of ['kterm', 'msedgedriver', 'tauri-driver']) {
+  for (const name of ['kterm', 'msedgewebview2', 'msedgedriver', 'tauri-driver']) {
     try {
       execSync(`taskkill /F /IM ${name}.exe /T 2>nul`, { stdio: 'ignore' })
     } catch {

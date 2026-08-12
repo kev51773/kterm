@@ -1,6 +1,10 @@
 import { expect } from '@wdio/globals'
 import { cliOk, listWindows, listTabs, spawnTab, closeTab, normalizeWindow, newWindow, closeWindow } from '../../src/helpers/daemon.js'
 
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 describe('20-basic', () => {
   after(() => normalizeWindow('win-1'))
 
@@ -37,6 +41,9 @@ describe('20-basic', () => {
     const winId = newWindow()
     expect(listWindows().length).toBe(before + 1)
     closeWindow(winId)
+    // tauri window teardown is async — poll until the window is really gone
+    const deadline = Date.now() + 15000
+    while (Date.now() < deadline && listWindows().length !== before) sleepSync(250)
     expect(listWindows().length).toBe(before)
   })
 })
