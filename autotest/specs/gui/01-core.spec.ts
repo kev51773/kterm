@@ -35,6 +35,19 @@ async function clickFirstTab(): Promise<void> {
   expect(clicked).toBe(true)
 }
 
+// Splits render as extra tab-bar entries; matching by includes + first-in-DOM
+// lands on the main pane (the split's bracketed title comes after it).
+async function clickTabByTitle(expected: string): Promise<void> {
+  const clicked = await browser.execute((t) => {
+    const el = Array.from(document.querySelectorAll('.tab-item')).find(
+      (el) => (el.querySelector('.tab-title') as HTMLElement | null)?.textContent?.includes(t),
+    ) as HTMLElement | null
+    el?.click()
+    return !!el
+  }, expected)
+  expect(clicked).toBe(true)
+}
+
 async function waitForTabTitle(expected: string, timeout = 10000): Promise<void> {
   await browser.waitUntil(async () => (await activeTabTitle()) === expected, { timeout })
 }
@@ -274,14 +287,21 @@ describe('01-core (default boot)', () => {
   })
 
   it('13. Find bar', async () => {
+    const shell = tabByProfile('powershell')
+    step('Echoed a unique marker "KTERM-FIND-MARKER-3131" into the shell')
+    waitForPrompt(shell, 30)
+    sendText(shell, 'echo KTERM-FIND-MARKER-3131')
+    waitFor(shell, 'KTERM-FIND-MARKER-3131', 30)
     step('Focused the terminal pane')
     await focusTerminal()
     step('Pressed Ctrl+F (find bar)')
     await browser.keys(['Control', 'f'])
     const input = await $('.find-input')
     await input.waitForExist({ timeout: 5000 })
-    step('Typed find query "Test-13 find query"')
-    await input.setValue('Test-13 find query')
+    step('Typed the marker into the find box')
+    await input.setValue('KTERM-FIND-MARKER-3131')
+    const count = await $('.find-count')
+    await browser.waitUntil(async () => /^1 of \d+$/.test(await count.getText()), { timeout: 5000 })
     await captureScreenshot('01-core', '13-find-bar')
     step('Clicked the find close button')
     await (await $('.find-close')).click()
@@ -320,6 +340,8 @@ describe('01-core (default boot)', () => {
       await expectTabTitleVisible(`[test-14-${s.profile}]`, 15000)
 
       await browser.pause(800)
+      await clickTabByTitle(`test-14-${s.profile}`)
+      await browser.pause(400)
       await captureScreenshot('01-core', `14-shell-${s.profile}`)
     }
   })

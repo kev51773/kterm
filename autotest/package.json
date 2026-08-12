@@ -12,9 +12,10 @@
     "test:gui:apply": "cross-env KTERM_BOOT_MODE=apply wdio run wdio.conf.ts --spec specs/gui/02-apply.spec.ts",
     "test:gui:admin": "cross-env KTERM_BOOT_MODE=admin wdio run wdio.conf.ts --spec specs/gui/03-admin.spec.ts",
     "test:gui:ux": "wdio run wdio.conf.ts --spec specs/gui/04-ux.spec.ts",
-    "test:gui:all": "npm run test:gui:admin && cross-env KTERM_MANIFEST_APPEND=1 npm run test:gui && cross-env KTERM_MANIFEST_APPEND=1 npm run test:gui:apply && cross-env KTERM_MANIFEST_APPEND=1 npm run test:gui:ux",
-    "test:cli": "wdio run wdio.conf.ts --spec specs/cli/*.spec.ts",
+    "test:gui:all": "node scripts/run-all.mjs",
+    "test:cli": "node scripts/run-cli.mjs",
     "report": "tsx src/report/report.ts",
+    "review": "tsx src/report/review-server.ts",
     "compare": "tsx compare/compare.ts"
   },
   "devDependencies": {

@@ -186,6 +186,7 @@ describe('04-ux', () => {
     step('Pressed Ctrl+Shift+W (unsplit)')
     await browser.keys(['Control', 'Shift', 'w'])
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 1, { timeout: 10000 })
+    await captureScreenshot('04-ux', '05-kbd-unsplit')
   })
 
   it('6. Paste from clipboard', async () => {
@@ -217,15 +218,34 @@ describe('04-ux', () => {
     step('Dragged to select the "KTERM-COPY-DEMO-5509" text')
     await dragSelectText('KTERM-COPY-DEMO-5509')
     await browser.waitUntil(async () => (await $$('.xterm-selection div').length) > 0, { timeout: 5000 })
+    await captureScreenshot('04-ux', '07-copy-selected')
 
-    step('Pressed Ctrl+C (smart copy)')
+    step('Pressed Ctrl+C (smart copy to clipboard)')
     await browser.keys(['Control', 'c'])
     await browser.waitUntil(() => getClipboard().includes('KTERM-COPY-DEMO-5509'), {
       timeout: 8000,
       interval: 300,
     })
     await browser.waitUntil(async () => (await $$('.xterm-selection div').length) === 0, { timeout: 5000 })
-    await captureScreenshot('04-ux', '07-copy')
+
+    step('Split the pane right to make a paste target')
+    splitTab(t, 'right', 'powershell')
+    await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 2, { timeout: 10000 })
+    const target = listTabs('win-1').find((x) => x.id !== t)
+    expect(target).toBeDefined()
+    setTabTitle(target!.id, 'ux-copy-target')
+    step('Clicked the new split pane to focus it')
+    const focused = await browser.execute((tabId) => {
+      const el = document.querySelector(`.split-pane-wrapper[data-tab-id="${tabId}"]`) as HTMLElement | null
+      el?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+      return !!el
+    }, target!.id)
+    expect(focused).toBe(true)
+    step('Pressed Ctrl+V (paste into the new split)')
+    await browser.keys(['Control', 'v'])
+    waitFor(target!.id, 'KTERM-COPY-DEMO-5509', 30)
+    await browser.pause(800)
+    await captureScreenshot('04-ux', '07-paste-split')
   })
 
   it('8. Split divider drag resizes the pane ratio', async () => {
@@ -257,5 +277,6 @@ describe('04-ux', () => {
     await captureScreenshot('04-ux', '08-drag-resize')
     unsplit(t)
     await browser.waitUntil(async () => (await $$('.split-pane-wrapper').length) === 1, { timeout: 10000 })
+    await captureScreenshot('04-ux', '08-unsplit')
   })
 })

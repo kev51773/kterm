@@ -4,6 +4,7 @@ import type { Options } from '@wdio/types'
 import { APP_BINARY, APPDATA_DIR, SCREENSHOT_ACTUAL, TMP_DIR } from './src/helpers/paths.js'
 import { ensureIsolatedAppdata, killAllKterm } from './src/helpers/env.js'
 import { startTest, endTest, step, addScreenshot, currentTest, relToAutotest } from './src/helpers/run.js'
+import { compareShot } from './src/helpers/screenshot.js'
 import { generate as generateReport } from './src/report/report.js'
 import { browser } from '@wdio/globals'
 
@@ -19,17 +20,20 @@ function shotName(index: number, title: string): string {
   return `T${index}-${shotSlug(title) || 'test'}.png`
 }
 
-async function captureEndScreenshot(): Promise<void> {
+async function captureEndScreenshot(spec: string, specFile: string): Promise<void> {
   const cur = currentTest()
   if (!cur) return
   if (cur.screenshots.length > 0) return // test already captured its own evidence
-  const file = `${cur.spec}/${shotName(cur.index, cur.title)}`
-  const abs = path.join(SCREENSHOT_ACTUAL, file)
+  // CLI tests drive the daemon, not the GUI — their end-shots are racy noise.
+  if (/specs[\\/]cli/.test(specFile)) return
+  const name = shotName(cur.index, cur.title)
+  const abs = path.join(SCREENSHOT_ACTUAL, spec, `${name}.png`)
   try {
     fs.mkdirSync(path.dirname(abs), { recursive: true })
     await browser.saveScreenshot(abs)
-    step(`took screenshot ${path.basename(abs)}`)
-    addScreenshot(relToAutotest(abs))
+    const result = await compareShot(spec, name, abs)
+    step(`took screenshot ${name}.png`)
+    addScreenshot(relToAutotest(abs), result.status, result.mismatchPct)
   } catch (e) {
     console.error('[afterTest] end screenshot failed:', (e as Error)?.message ?? e, '| abs:', abs, '| ext:', path.extname(abs))
   }
@@ -62,7 +66,7 @@ tabs:
   title: boot-apply-b
   splits:
   - direction: right
-    profile: powershell
+    profile: cmd
     title: boot-apply-b2
 `)
   fs.writeFileSync(path.join(APPDATA_DIR, 'boot-admin.yaml'), `window:
@@ -140,8 +144,9 @@ export const config: Options.Testrunner = {
     startTest(specFromFile(context?.test?.parent?.file), test.title)
   },
   afterTest: async (test, context, { error }) => {
-    await captureEndScreenshot()
-    endTest(error ? 'failed' : 'passed')
+    const spec = specFromFile(context?.test?.parent?.file)
+    await captureEndScreenshot(spec, context?.test?.parent?.file ?? '')
+    endTest(error ? 'failed' : 'passed', error?.message)
   },
   onComplete: () => {
     try {

@@ -6,7 +6,7 @@ import { step } from '../../src/helpers/run.js'
 
 describe('02-apply boot (--apply session)', () => {
   it('renders the applied session tabs in the GUI', async () => {
-    step('Opened kterm with --apply boot session (boot-apply.yaml: powershell, cmd, cmd-split)')
+    step('Opened kterm with --apply boot session (boot-apply.yaml: powershell, cmd, cmd split right into a second cmd pane)')
     try {
       await waitForTabCount(2, 25000)
     } catch (e) {
@@ -42,7 +42,7 @@ describe('02-apply boot (--apply session)', () => {
   })
 
   it('shows the split pane from the applied session', async () => {
-    step('Clicked the "boot-apply-b" tab (cmd with right split)')
+    step('Clicked the "boot-apply-b" tab (cmd with a right split into a second cmd pane)')
     const clicked = await browser.execute(() => {
       const items = document.querySelectorAll('.tab-item')
       for (const el of items) {

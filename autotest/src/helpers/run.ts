@@ -2,13 +2,22 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { AUTOTEST_DIR, TMP_DIR } from './paths.js'
 
+export type CompareStatus = 'baseline-missing' | 'match' | 'diff' | 'updated-baseline'
+
+export interface RunShot {
+  rel: string // path to actual screenshot, relative to AUTOTEST_DIR, forward slashes
+  compare?: CompareStatus
+  mismatchPct?: number
+}
+
 export interface RunTest {
   index: number
   spec: string
   title: string
-  status: 'passed' | 'failed'
+  status: 'passed' | 'failed' | 'skipped'
   steps: string[]
-  screenshots: string[] // paths relative to AUTOTEST_DIR, forward slashes
+  screenshots: RunShot[]
+  error?: string
 }
 
 export interface RunManifest {
@@ -50,14 +59,20 @@ export function step(text: string): void {
   writeManifest()
 }
 
-export function addScreenshot(relPath: string): void {
+export function addScreenshot(relPath: string, compare?: CompareStatus, mismatchPct?: number): void {
   if (!current) return
-  current.screenshots.push(relPath)
+  const shot: RunShot = { rel: relPath }
+  if (compare) shot.compare = compare
+  if (mismatchPct !== undefined) shot.mismatchPct = mismatchPct
+  current.screenshots.push(shot)
   writeManifest()
 }
 
-export function endTest(status: 'passed' | 'failed'): void {
-  if (current) current.status = status
+export function endTest(status: 'passed' | 'failed', error?: string): void {
+  if (current) {
+    current.status = status
+    if (error) current.error = error
+  }
   current = null
   writeManifest()
 }

@@ -11,29 +11,28 @@ export interface ShotResult {
   mismatchPct?: number
 }
 
-function shotDir(spec: string): { actualDir: string; baselineDir: string } {
-  const actualDir = path.join(SCREENSHOT_ACTUAL, spec)
-  const baselineDir = path.join(SCREENSHOT_BASELINE, spec)
-  fs.mkdirSync(actualDir, { recursive: true })
-  fs.mkdirSync(baselineDir, { recursive: true })
-  return { actualDir, baselineDir }
-}
-
 export async function captureScreenshot(spec: string, name: string): Promise<ShotResult> {
-  const { actualDir, baselineDir } = shotDir(spec)
+  const actualDir = path.join(SCREENSHOT_ACTUAL, spec)
+  fs.mkdirSync(actualDir, { recursive: true })
   const actualPath = path.join(actualDir, `${name}.png`)
-  const baselinePath = path.join(baselineDir, `${name}.png`)
 
   await browser.saveScreenshot(actualPath)
   await saveStateJson(actualPath)
 
-  const rel = relToAutotest(actualPath)
-  step(`took screenshot ${path.basename(actualPath)}`)
-  addScreenshot(rel)
+  const result = await compareShot(spec, name, actualPath)
 
+  step(`took screenshot ${path.basename(actualPath)}`)
+  addScreenshot(relToAutotest(actualPath), result.status, result.mismatchPct)
+  return result
+}
+
+export async function compareShot(spec: string, name: string, actualPath: string): Promise<ShotResult> {
+  const baselineDir = path.join(SCREENSHOT_BASELINE, spec)
+  const baselinePath = path.join(baselineDir, `${name}.png`)
   const result: ShotResult = { name, path: actualPath, status: 'match' }
 
   if (UPDATE_BASELINE) {
+    fs.mkdirSync(baselineDir, { recursive: true })
     fs.copyFileSync(actualPath, baselinePath)
     result.status = 'updated-baseline'
     console.log(`  [shot] ${name} -> baseline updated`)
