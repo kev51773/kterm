@@ -6,10 +6,15 @@ import { ensureIsolatedAppdata, killAllKterm } from './src/helpers/env.js'
 import { startTest, endTest, step, addScreenshot, currentTest, relToAutotest } from './src/helpers/run.js'
 import { compareShot } from './src/helpers/screenshot.js'
 import { generate as generateReport } from './src/report/report.js'
+import { find100DpiMonitor, moveWindowTo } from './src/helpers/window.js'
 import { browser } from '@wdio/globals'
 
 function specFromFile(file?: string): string {
   return file?.split(/[\\/]/).pop()?.replace(/\.spec\.ts$/, '') ?? 'unknown'
+}
+
+function specKind(file?: string): 'cli' | 'gui' {
+  return /specs[\\/]cli/.test(file ?? '') ? 'cli' : 'gui'
 }
 
 function shotSlug(title: string): string {
@@ -120,7 +125,9 @@ export const config: Options.Testrunner = {
         autoInstallTauriDriver: true,
         autoDownloadEdgeDriver: true,
         captureBackendLogs: true,
-        env: { APPDATA: APPDATA_DIR },
+        env: {
+          APPDATA: APPDATA_DIR,
+        },
         startTimeout: 60000,
       },
     ],
@@ -140,10 +147,25 @@ export const config: Options.Testrunner = {
     ensureIsolatedAppdata()
     writeBootFixtures()
   },
-  beforeTest: (test, context) => {
-    startTest(specFromFile(context?.test?.parent?.file), test.title)
+  // Runs once per worker after the app is up: pin win-1 to a 100%-DPI monitor
+  // so screenshots are physical == logical pixels regardless of monitor scale.
+  before: () => {
+    const mon = find100DpiMonitor()
+    let moved = false
+    let note = 'no 100%-DPI monitor found — screenshots stay DPI-scaled'
+    if (mon) {
+      moved = moveWindowTo(mon)
+      note = moved ? `window moved to ${JSON.stringify(mon)}` : 'window NOT found'
+    }
+    console.log(`[before] ${note}`)
+    fs.writeFileSync(
+      path.join(TMP_DIR, 'window-move.json'),
+      JSON.stringify({ mon, moved, note, at: new Date().toISOString() }, null, 2),
+    )
   },
-  afterTest: async (test, context, { error }) => {
+  beforeTest: (test, context) => {
+    startTest(specFromFile(context?.test?.parent?.file), test.title, specKind(context?.test?.parent?.file))
+  },  afterTest: async (test, context, { error }) => {
     const spec = specFromFile(context?.test?.parent?.file)
     await captureEndScreenshot(spec, context?.test?.parent?.file ?? '')
     endTest(error ? 'failed' : 'passed', error?.message)

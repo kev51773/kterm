@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { PNG } from 'pngjs'
 import { browser } from '@wdio/globals'
 import { SCREENSHOT_BASELINE, SCREENSHOT_ACTUAL, DIFF_DIR, UPDATE_BASELINE } from './paths.js'
 import { step, addScreenshot, relToAutotest } from './run.js'
@@ -57,15 +58,32 @@ export async function compareShot(spec: string, name: string, actualPath: string
 }
 
 async function pixelDiff(baselinePath: string, actualPath: string, spec: string, name: string): Promise<number | null> {
-  const { PNG } = await import('pngjs')
   const pixelmatch = (await import('pixelmatch')).default
 
   const base = PNG.sync.read(fs.readFileSync(baselinePath))
   const act = PNG.sync.read(fs.readFileSync(actualPath))
 
   if (base.width !== act.width || base.height !== act.height) {
-    console.log(`  [shot] ${name} -> SIZE MISMATCH ${base.width}x${base.height} vs ${act.width}x${act.height}`)
-    return 100
+    // Same aspect ratio = uniform scale (Windows DPI scaling 100% vs 150%).
+    // Normalize to the smaller canvas so pixel diff means content, not zoom.
+    const baseAspect = base.width / base.height
+    const actAspect = act.width / act.height
+    const aspectDelta = Math.abs(baseAspect - actAspect) / Math.max(baseAspect, actAspect)
+    if (aspectDelta > 0.01) {
+      console.log(`  [shot] ${name} -> SIZE MISMATCH ${base.width}x${base.height} vs ${act.width}x${act.height} (aspect differs)`)
+      return 100
+    }
+    const dw = Math.min(base.width, act.width)
+    const dh = Math.min(base.height, act.height)
+    console.log(`  [shot] ${name} -> DPI SCALE ${base.width}x${base.height} vs ${act.width}x${act.height}, normalizing to ${dw}x${dh}`)
+    if (base.width !== dw || base.height !== dh) {
+      const r = resizeBilinear(base, dw, dh)
+      base.width = r.width; base.height = r.height; base.data = r.data
+    }
+    if (act.width !== dw || act.height !== dh) {
+      const r = resizeBilinear(act, dw, dh)
+      act.width = r.width; act.height = r.height; act.data = r.data
+    }
   }
 
   const diff = new PNG({ width: base.width, height: base.height })
@@ -79,6 +97,35 @@ async function pixelDiff(baselinePath: string, actualPath: string, spec: string,
   fs.writeFileSync(path.join(diffDir, `${name}.png`), PNG.sync.write(diff))
 
   return pct > 0.1 ? pct : null
+}
+
+// Bilinear RGBA resize. Used only to undo DPI scale (same aspect ratio) so
+// pixel diff measures content, not zoom. pngjs has no resize built in.
+function resizeBilinear(src: PNG, dw: number, dh: number): PNG {
+  const out = new PNG({ width: dw, height: dh })
+  const sw = src.width
+  const sh = src.height
+  const sx = sw / dw
+  const sy = sh / dh
+  for (let y = 0; y < dh; y++) {
+    const fy = (y + 0.5) * sy - 0.5
+    const y0 = Math.max(0, Math.floor(fy))
+    const y1 = Math.min(sh - 1, y0 + 1)
+    const wy = fy - y0
+    for (let x = 0; x < dw; x++) {
+      const fx = (x + 0.5) * sx - 0.5
+      const x0 = Math.max(0, Math.floor(fx))
+      const x1 = Math.min(sw - 1, x0 + 1)
+      const wx = fx - x0
+      const o = (y * dw + x) * 4
+      for (let c = 0; c < 4; c++) {
+        const top = src.data[(y0 * sw + x0) * 4 + c] * (1 - wx) + src.data[(y0 * sw + x1) * 4 + c] * wx
+        const bot = src.data[(y1 * sw + x0) * 4 + c] * (1 - wx) + src.data[(y1 * sw + x1) * 4 + c] * wx
+        out.data[o + c] = Math.round(top * (1 - wy) + bot * wy)
+      }
+    }
+  }
+  return out
 }
 
 async function saveStateJson(actualPath: string): Promise<void> {

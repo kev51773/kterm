@@ -14,6 +14,7 @@ export interface RunTest {
   index: number
   spec: string
   title: string
+  kind: 'cli' | 'gui'
   status: 'passed' | 'failed' | 'skipped'
   steps: string[]
   screenshots: RunShot[]
@@ -42,13 +43,13 @@ let current: RunTest | null = null
 let lastSpec: string | null = null
 const specCounters: Record<string, number> = {}
 
-export function startTest(spec: string, title: string): void {
+export function startTest(spec: string, title: string, kind: 'cli' | 'gui' = 'gui'): void {
   if (lastSpec !== spec) {
     lastSpec = spec
     specCounters[spec] = 0
   }
   specCounters[spec] = (specCounters[spec] ?? 0) + 1
-  current = { index: specCounters[spec], spec, title, status: 'passed', steps: [], screenshots: [] }
+  current = { index: specCounters[spec], spec, title, kind, status: 'passed', steps: [], screenshots: [] }
   tests.push(current)
   writeManifest()
 }

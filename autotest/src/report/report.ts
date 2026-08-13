@@ -17,6 +17,7 @@ export interface ReportTest {
   spec: string
   index: number
   title: string
+  kind: 'cli' | 'gui'
   status: string
   error?: string
   shots: ReportShot[]
@@ -68,7 +69,7 @@ export function renderReportHtml(run: RunManifest, base: string): string {
       const { spec, name } = shotSpecAndName(s.rel)
       return { name, spec, compare: s.compare, mismatchPct: s.mismatchPct }
     })
-    cards.push({ key, spec: t.spec, index: t.index, title: t.title, status: t.status, error: t.error, shots, steps: t.steps })
+    cards.push({ key, spec: t.spec, index: t.index, title: t.title, kind: t.kind ?? 'gui', status: t.status, error: t.error, shots, steps: t.steps })
   }
 
   const passed = norm.tests.filter((t) => t.status === 'passed').length
@@ -112,7 +113,7 @@ h1{font-size:20px;margin:0 0 4px}
 .chip.updated{background:#0f2e1a;color:var(--green)}
 .pair{display:flex;gap:10px;flex-wrap:wrap}
 .pair figure{margin:0;flex:1 1 380px;max-width:430px}
-.pair img{display:block;width:100%;border:1px solid #333;border-radius:6px}
+.pair img{display:block;width:100%;border:1px solid #333;border-radius:6px;cursor:zoom-in}
 .pair figcaption{color:var(--muted);font-size:11px;margin-bottom:4px}
 .placeholder{display:flex;align-items:center;justify-content:center;height:120px;border:1px dashed #333;border-radius:6px;color:var(--muted);font-size:12px}
 .verdict{display:flex;gap:18px;align-items:flex-start;margin-top:10px;flex-wrap:wrap}
@@ -122,12 +123,20 @@ h1{font-size:20px;margin:0 0 4px}
 .verdict textarea{flex:1 1 100%;min-height:56px;background:#0d0e11;border:1px solid #282c34;border-radius:6px;color:var(--fg);font:12px/1.4 "Consolas",monospace;padding:8px;display:none}
 .verdict textarea.show{display:block}
 .skipped-note{color:var(--amber);font-size:12px;margin-top:8px}
+.cli-note{color:var(--muted);font-size:12px;margin-top:8px}
 #bar{position:fixed;bottom:0;left:0;right:0;padding:12px 24px;background:var(--card);border-top:1px solid #282c34;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 #bar button{background:var(--accent);color:#000;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer}
 #bar button:disabled{opacity:.4;cursor:default}
 #bar button.update{background:var(--green)}
 #bar .note{color:var(--muted);font-size:12px}
 #bar #status-msg{color:var(--green);font-size:12px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:50;cursor:zoom-out}
+#modal.show{display:flex}
+#modal .content{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:96vw;max-height:92vh}
+#modal figure{margin:0;flex:1 1 40vw;max-width:48vw;display:flex;flex-direction:column}
+#modal img{display:block;max-width:100%;max-height:80vh;object-fit:contain;border:1px solid #333;border-radius:6px}
+#modal figcaption{color:var(--muted);font-size:12px;margin-top:6px;text-align:center}
+#modal .placeholder{display:flex;align-items:center;justify-content:center;height:40vh;border:1px dashed #333;border-radius:6px;color:var(--muted)}
 #prompt{padding:16px 24px 20px}
 #prompt pre{background:#0d0e11;border:1px solid #282c34;border-radius:8px;padding:14px;white-space:pre-wrap;color:#b6bdc9;max-height:360px;overflow:auto}
 #prompt button{margin-top:8px;background:var(--green);color:#000;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer}
@@ -149,6 +158,12 @@ ${bodies}
   <span class="note">fail <b id="n-fail">0</b> · update <b id="n-update">0</b> · pass <b id="n-pass">0</b></span>
   <span id="status-msg"></span>
 </div>
+<div id="modal">
+  <div class="content">
+    <figure><img id="modal-base" alt="baseline"><figcaption id="modal-base-cap"></figcaption></figure>
+    <figure><img id="modal-cur" alt="current"><figcaption id="modal-cur-cap"></figcaption></figure>
+  </div>
+</div>
 <script>
 const RUN_TS=${jsString(run.generatedAt)};
 const TESTS=${JSON.stringify(cards).replace(/</g,'\\u003c')};
@@ -160,6 +175,7 @@ function shotsOf(t){return t.shots}
 function defaultVerdict(t){
   if(t.status==='failed')return 'fail';
   if(t.status==='skipped')return null;
+  if(t.kind==='cli')return 'pass'; // CLI tests have no visuals; trust the run
   const s=shotsOf(t);
   if(s.some(x=>x.compare==='diff'))return 'fail';
   if(s.some(x=>x.compare==='baseline-missing'||x.compare===undefined))return 'update';
@@ -177,6 +193,7 @@ function counts(){
   document.getElementById('n-pass').textContent=p;
 }
 function applyCard(t,card){
+  if(t.kind==='cli')return; // no verdict controls for CLI tests
   const radios=card.querySelectorAll('input[name="v-'+t.key+'"]');
   radios.forEach(r=>{r.addEventListener('change',()=>{setVerdict(t.key,r.value);syncCard(t,card)})});
   const ta=card.querySelector('textarea');
@@ -199,6 +216,26 @@ document.querySelectorAll('.card').forEach(card=>{
   if(!t)return;
   if(t.status==='skipped')return; // skipped tests carry no verdict buttons
   applyCard(t,card);
+});
+const modal=document.getElementById('modal');
+function openModal(img){
+  const pair=img.closest('.pair');
+  const figs=pair.querySelectorAll('figure');
+  const mb=document.getElementById('modal-base');const mc=document.getElementById('modal-cur');
+  const db=document.getElementById('modal-base-cap');const dc=document.getElementById('modal-cur-cap');
+  const b=figs[0].querySelector('img');
+  const c=figs[1].querySelector('img');
+  const bcap=figs[0].querySelector('figcaption');
+  const ccap=figs[1].querySelector('figcaption');
+  if(b){mb.src=b.src;mb.style.display='block';db.textContent=bcap?bcap.textContent:'baseline'}
+  else{mb.removeAttribute('src');mb.style.display='none';db.textContent='no baseline'}
+  mc.src=c?c.src:img.src;dc.textContent=ccap?ccap.textContent:'current';
+  modal.classList.add('show');
+}
+modal.addEventListener('click',()=>modal.classList.remove('show'));
+document.addEventListener('click',e=>{
+  const img=e.target.closest('.pair img');
+  if(img&&!modal.classList.contains('show'))openModal(img);
 });
 function shotLine(s){return s.name+(s.compare==='diff'?(' DIFF '+((s.mismatchPct||0)).toFixed(2)+'%'):s.compare==='match'?' MATCH':s.compare==='baseline-missing'?' NO BASELINE':s.compare==='updated-baseline'?' UPDATED':' no-compare')}
 function buildPrompt(){
@@ -309,14 +346,16 @@ function cardHtml(t: ReportTest, base: string): string {
 
   const verdict = t.status === 'skipped'
     ? `<div class="skipped-note">skipped: ${htmlEscape(t.error ?? 'no reason')}</div>`
-    : `<div class="verdict" data-key="${htmlEscape(t.key)}">
-        <div class="opts">
-          <label><input type="radio" name="v-${htmlEscape(t.key)}" value="fail"> Fail</label>
-          <label><input type="radio" name="v-${htmlEscape(t.key)}" value="pass"> Pass</label>
-          <label><input type="radio" name="v-${htmlEscape(t.key)}" value="update"> Pass (and update baseline)</label>
-        </div>
-        <textarea placeholder="Describe the failure — it goes into the failure prompt..."></textarea>
-      </div>`
+    : t.kind === 'cli'
+      ? `<div class="cli-note">CLI test — verdict from run (no visual evidence)</div>`
+      : `<div class="verdict" data-key="${htmlEscape(t.key)}">
+          <div class="opts">
+            <label><input type="radio" name="v-${htmlEscape(t.key)}" value="fail"> Fail</label>
+            <label><input type="radio" name="v-${htmlEscape(t.key)}" value="pass"> Pass</label>
+            <label><input type="radio" name="v-${htmlEscape(t.key)}" value="update"> Pass (and update baseline)</label>
+          </div>
+          <textarea placeholder="Describe the failure — it goes into the failure prompt..."></textarea>
+        </div>`
 
   return `<section class="card${t.status === 'skipped' ? ' skipped' : ''}" data-key="${htmlEscape(t.key)}">
   <div class="head">
