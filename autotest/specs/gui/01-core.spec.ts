@@ -108,6 +108,7 @@ describe('01-core (default boot)', () => {
     setTabTitle(shell, 'test-01')
     await waitForTabTitle('test-01')
     echoText(shell, 'Test-01 - boot shell is live', 30)
+    await settle()
     await captureScreenshot('01-core', '01-boot-shell')
   })
 
