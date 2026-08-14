@@ -62,20 +62,24 @@ From `autotest/`:
 
 | Command | Boot mode | What runs |
 |---|---|---|
-| `npm run test:gui` | default | `01-core.spec.ts` (15 tests) |
+| `npm run test:gui` | default | `01-core.spec.ts` (14 tests) |
 | `npm run test:gui:apply` | apply | `02-apply.spec.ts` (2 tests) |
-| `npm run test:gui:admin` | admin | `03-admin.spec.ts` |
-| `npm run test:gui:ux` | default | `04-ux.spec.ts` (6 tests) |
-| `npm run test:gui:all` | mixed | `admin → core → apply → ux` (each its own run) |
-| `npm run test:cli` | default | all `specs/cli/*.spec.ts` |
+| `npm run test:gui:admin` | admin | `03-admin.spec.ts` (1 test) |
+| `npm run test:gui:ux` | default | `04-ux.spec.ts` (8 tests) |
+| `npm run test:gui:all` | mixed | `admin → core → apply → ux` (each its own run) then all CLI |
+| `npm run test:cli` | default | all `specs/cli/*.spec.ts` (20-basic … 27-suffix-focus) |
 | `npm run test` | default | everything in the `specs` glob |
-| `npm run test:update-baseline` | — | same as test, but refreshes screenshot baselines |
+| `npm run report` | — | static HTML report of the last run → `tmp/report.html` |
+| `npm run review` | — | interactive review server on `http://127.0.0.1:8765` — **the** way to promote baselines |
+| `npm run test:update-baseline` | — | auto-refreshes every baseline (`UPDATE_BASELINE=1`). **Deprecated — use `npm run review` instead** (see "Promoting baselines") |
 | `npm run compare` | — | pixel-diff actual vs baseline (the visual gate) |
 | `npm run build` | — | rebuild release binary (`cd .. && npx tauri build --no-bundle`) |
 
 **`test:gui:all` must run from an elevated terminal** (admin suite fires a real UAC
 prompt — see gotcha). Order is deliberate: admin first so the UAC prompt appears
-~3s after start; the user clicks it and walks away.
+~3s after start; the user clicks it and walks away. If the admin suite fails anyway,
+`run-all.mjs` reclassifies its failures as **skipped** (`UAC consent not approved`)
+so the rest of the run proceeds and the report doesn't show a false failure.
 
 ## Anatomy of a Test
 
@@ -113,14 +117,48 @@ do not reinvent `--flag` invocations per spec.**
 
 ## Screenshots And Baselines
 
-`captureScreenshot()` saves `screenshots/actual/<spec>/<name>.png`, then:
+`captureScreenshot(spec, name)` saves `screenshots/actual/<spec>/<name>.png` plus a
+`<name>.json` DOM-state snapshot, then compares against the baseline:
 - no baseline yet → `baseline-missing` (does **not** fail the test);
-- baseline exists → pixel-diff; a mismatch is logged, **does not fail the test**;
-- `UPDATE_BASELINE=1` → overwrites baseline.
+- baseline exists → pixel-diff; ≤0.1% mismatched pixels = `match`; more is `diff`
+  (logged, **does not fail the test**);
+- `UPDATE_BASELINE=1` → overwrites baseline unconditionally (deprecated).
 
-**Screenshots never gate a test.** The gate is `npm run compare`
-(`compare/compare.ts`). CI-style guarding is opt-in — do not turn a screenshot
-diff into a hard failure without asking.
+**Screenshots never gate a test.** A diff is a signal for human review, not a failure.
+
+### Promoting baselines — the review server
+
+Every suite run lands new screenshots in `screenshots/actual/`. To accept them as
+the new `screenshots/baseline/`, review them manually. Do **not** copy files into
+`baseline/` yourself and do **not** run `test:update-baseline` to promote.
+
+1. `npm run review` — starts a server on `http://127.0.0.1:8765` and opens the report.
+   (A stale server holds the port; if it won't start, kill the PID from
+   `netstat -ano | grep :8765`.)
+2. Per test pick a verdict — defaults are pre-filled from the pixel compare:
+   - **fail** — the shot is wrong; write a note describing what's wrong (it feeds
+     the failure prompt);
+   - **update** — the shot is correct; promotes actual → baseline;
+   - **pass** — shot already matches; nothing to do.
+   Failing tests and tests with `diff` shots default to **fail**; `baseline-missing`
+   defaults to **update**; CLI tests default to **pass** (no visuals).
+3. Click **Update selected baselines** — copies the `update` verdicts' actuals into
+   `screenshots/baseline/`.
+4. For any test marked **fail**, click **Generate failure prompt** and paste the
+   result back to the agent — that's the work queue.
+
+`npm run report` renders the same HTML statically to `tmp/report.html`; opened via
+`file://` the **Update baselines button is disabled** (FILE_MODE) — baseline writes
+require the review server.
+
+### The agent's manual-review obligation
+
+When **your own** change is under test and any screenshot differs, **stop and ask
+the user to review** — run `npm run review` (or tell them to), list exactly which
+shots diff (name + `DIFF n%`), and wait for their verdict before re-running or
+re-baselining. Never auto-promote your own changed screenshots: the diff may be a
+real regression or a timing artifact, and the user decides which. This is the
+established workflow — "run `test:update-baseline` to fix a diff" is a mistake.
 
 ---
 
@@ -153,8 +191,7 @@ diff into a hard failure without asking.
   an actual Windows UAC prompt. Unanswered, `ShellExecuteW` hangs → ~30s connect
   timeout → tab never created → test fails. **Run the admin suite from an elevated
   terminal** (then no prompt at all). If the prompt appears and the test fails,
-  first suspect "did someone click UAC?". App's elevated-spawn trace lands in
-  `C:\Users\Kev\Desktop\admin_debug.log` (truncated each run).
+  first suspect "did someone click UAC?".
 - **Apply/admin modes change the boot fixture**, not just the config. Both suites
   require their `KTERM_BOOT_MODE`; running `02-apply` under `default` mode fails.
 
@@ -168,6 +205,27 @@ diff into a hard failure without asking.
   before "smart Ctrl+C" copies anything.
 - Clipboard is process-global and survives between tests — **if test N+1 is
   clipboard-flaky, suspect leftover clipboard content from test N**, not the code.
+
+### Screenshot timing & run discipline
+- **Capture after the frame settles.** `sendText('echo ...')` followed by an
+  immediate screenshot races the echo's render: the PTY output can reach the
+  daemon buffer before the WebView paints it, so the shot shows no output. Use
+  `echoText()` (waitForPrompt → send → waitFor), then **`await settle()` again**
+  before `captureScreenshot` (see test 1 in `01-core.spec.ts`).
+- **Transient-frame shots never go fully green.** Boot animation, tab-close fades,
+  split-resize, tab-jump and paste-caret frames jitter ~0.3–0.6% run-to-run even
+  when correct. They flag `diff` against the ≤0.1% bar but are visually identical —
+  review once, promote, and expect them to wobble on every run.
+- **`specFileRetries: 2`** (wdio.conf.ts): a failed spec re-runs up to 3×, so the
+  log shows repeated "1 passing 1 failing" lines and a failing run takes ~3×
+  longer. "1 failing" repeated = one spec failing once and being retried, not N bugs.
+- **Do not touch the kterm window while a suite runs.** The tests type into the
+  app under test; a stray keystroke corrupts state and produces bogus diffs and
+  failures (multiple times burned here). Runs are unattended — walk away.
+- **Aborted runs can linger.** If a run is interrupted (Ctrl+C / `head` closing the
+  pipe), its wdio/kterm processes may keep running and collide with the next run.
+  On strange behavior, kill `kterm`, `msedgewebview2` (test instances),
+  `msedgedriver`, `tauri-driver`, `node` before re-running.
 
 ### wdio / drivers
 - **`postinstall` patches `@wdio/tauri-service`** (`maxAttempts` 100 → 1) because the
@@ -207,10 +265,19 @@ diff into a hard failure without asking.
 5. **Isolate state** — start with `resetGuiState()`, clean up in the test (or
    `afterEach`), never close the last window.
 6. **Screenshots are evidence, not assertions** — unless the user asks for a visual gate.
-7. **Rebuild** if any source changed, then run just your spec:
+7. **Capture after settle.** Before `captureScreenshot`, drive the state to a stable
+   frame: `echoText(...)` + `await settle()` (wait-for-prompt + render pause), or a
+   `browser.waitUntil` on the DOM condition you're about to shoot. Capturing
+   mid-animation or right after a CLI command yields a race (see "Screenshot
+   timing" gotcha).
+8. **Name screenshots `<NN>-<slug>.png`** following the suite's numeric order
+   (`01-boot-shell`, `02-add-tab`, …). Every shot you add or change needs manual
+   review: run `npm run review`, ask the user to verdict it, and only promote once
+   they approve (see "Promoting baselines").
+9. **Rebuild** if any source changed, then run just your spec:
    `npx wdio run wdio.conf.ts --spec specs/gui/0X-*.spec.ts`.
-8. **Run the neighboring suite twice** — flakes are state- or timing-related, and
-   one green run proves nothing. Clipboard-heavy tests especially.
+10. **Run the neighboring suite twice** — flakes are state- or timing-related, and
+    one green run proves nothing. Clipboard-heavy tests especially.
 
 ## Troubleshooting Table
 
