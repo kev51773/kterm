@@ -4,19 +4,6 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 
-fn debug_log(msg: &str) {
-    use std::io::Write;
-    let _ = (|| -> std::io::Result<()> {
-        let mut f = std::fs::OpenOptions::new()
-            .create(true).append(true)
-            .open(r"C:\Users\Kev\Desktop\admin_debug.log")?;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        writeln!(f, "[{:.3}] [pid:{}] {}", now.as_secs_f64(), std::process::id(), msg)
-    })();
-}
-
 pub type ExitCallback = Arc<dyn Fn(String) + Send + Sync>;
 
 pub struct PtySession {
@@ -41,12 +28,6 @@ pub struct PtySession {
     // before calling the blocking .wait(). This prevents close() from deadlocking
     // when it tries to kill() through the same mutex.
     _child: Arc<Mutex<Option<Box<dyn Child + Send>>>>,
-}
-
-impl Drop for PtySession {
-    fn drop(&mut self) {
-        debug_log(&format!("SERVER: PtySession {} DROPPED!", self.id));
-    }
 }
 
 impl PtySession {
@@ -162,8 +143,6 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
     use std::io::{Read, Write};
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
-    debug_log(&format!("BRIDGE: started, id_arg='{}', profile='{}'", id, profile));
-
     // The id is passed as "tab_id:uuid" to ensure unique pipe names
     let parts: Vec<&str> = id.split(':').collect();
     let pipe_id = if parts.len() == 2 { parts[1] } else { id };
@@ -171,30 +150,22 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
     let pipe_in_path = format!("\\\\.\\pipe\\kterm_pipe_in_{}", pipe_id);
     let pipe_out_path = format!("\\\\.\\pipe\\kterm_pipe_out_{}", pipe_id);
 
-    debug_log("BRIDGE: opening pipe_in...");
     let mut file_in = loop {
         match OpenOptions::new().read(true).write(true).open(&pipe_in_path) {
             Ok(f) => {
-                debug_log("BRIDGE: pipe_in opened successfully");
                 break f;
             }
-            Err(e) => {
-                debug_log(&format!("BRIDGE: pipe_in open attempt failed: {}", e));
-            }
+            Err(_) => {}
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
 
-    debug_log("BRIDGE: opening pipe_out...");
     let mut file_out = loop {
         match OpenOptions::new().read(true).write(true).open(&pipe_out_path) {
             Ok(f) => {
-                debug_log("BRIDGE: pipe_out opened successfully");
                 break f;
             }
-            Err(e) => {
-                debug_log(&format!("BRIDGE: pipe_out open attempt failed: {}", e));
-            }
+            Err(_) => {}
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
@@ -227,7 +198,6 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
         }
     };
 
-    debug_log("BRIDGE: opening PTY...");
     let pty_system = native_pty_system();
     let pair = match pty_system.openpty(PtySize {
         rows: 30,
@@ -235,14 +205,13 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
         pixel_width: 0,
         pixel_height: 0,
     }) {
-        Ok(p) => { debug_log("BRIDGE: PTY opened"); p },
-        Err(e) => { debug_log(&format!("BRIDGE: PTY open FAILED: {}", e)); return; },
+        Ok(p) => { p },
+        Err(_) => { return; },
     };
 
-    debug_log("BRIDGE: spawning shell command...");
     let child = match pair.slave.spawn_command(cmd) {
-        Ok(c) => { debug_log("BRIDGE: shell spawned"); c },
-        Err(e) => { debug_log(&format!("BRIDGE: shell spawn FAILED: {}", e)); return; },
+        Ok(c) => { c },
+        Err(_) => { return; },
     };
 
     let pid = child.process_id().unwrap_or(0);
@@ -252,32 +221,25 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
     let child_arc = std::sync::Arc::new(std::sync::Mutex::new(Some(child)));
     let child_clone = child_arc.clone();
 
-    debug_log("BRIDGE: taking master writer...");
     let mut master_writer = match pair.master.take_writer() {
-        Ok(w) => { debug_log("BRIDGE: master writer taken"); w },
-        Err(e) => { debug_log(&format!("BRIDGE: take_writer FAILED: {}", e)); return; },
+        Ok(w) => { w },
+        Err(_) => { return; },
     };
-    debug_log("BRIDGE: cloning master reader...");
     let mut master_reader = match pair.master.try_clone_reader() {
-        Ok(r) => { debug_log("BRIDGE: master reader cloned"); r },
-        Err(e) => { debug_log(&format!("BRIDGE: try_clone_reader FAILED: {}", e)); return; },
+        Ok(r) => { r },
+        Err(_) => { return; },
     };
 
-    debug_log("BRIDGE: starting relay threads...");
     std::thread::spawn(move || {
-        debug_log("BRIDGE-TX: thread started");
         let mut buf = [0u8; 4096];
         while let Ok(n) = file_in.read(&mut buf) {
             if n == 0 {
-                debug_log("BRIDGE-TX: pipe read returned 0 (EOF)");
                 break;
             }
             if master_writer.write_all(&buf[..n]).is_err() {
-                debug_log("BRIDGE-TX: master write failed");
                 break;
             }
         }
-        debug_log("BRIDGE-TX: pipe disconnected or closed. Terminating child shell and bridge process.");
         if let Ok(mut lock) = child_clone.lock() {
             if let Some(mut c) = lock.take() {
                 let _ = c.kill();
@@ -289,15 +251,12 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
     let mut buf = [0u8; 4096];
     while let Ok(n) = master_reader.read(&mut buf) {
         if n == 0 {
-            debug_log("BRIDGE-RX: master read returned 0 (EOF)");
             break;
         }
         if file_out.write_all(&buf[..n]).is_err() {
-            debug_log("BRIDGE-RX: pipe write failed");
             break;
         }
     }
-    debug_log("BRIDGE: main loop exiting (shell closed or pipe broken)");
     if let Ok(mut lock) = child_arc.lock() {
         if let Some(mut c) = lock.take() {
             let _ = c.kill();
@@ -501,46 +460,36 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
         fn GetLastError() -> u32;
     }
 
-    debug_log("SERVER: waiting for pipe connection (30s timeout)...");
     let (tx, rx) = mpsc::channel::<Result<(), String>>();
     let handle_val = handle as usize;
 
     std::thread::spawn(move || {
         let h = handle_val as *mut std::ffi::c_void;
-        debug_log("SERVER: ConnectNamedPipe called (blocking)...");
         let connected = unsafe { ConnectNamedPipe(h, std::ptr::null_mut()) };
-        debug_log(&format!("SERVER: ConnectNamedPipe returned {}", connected));
         if connected == 0 {
             let err = unsafe { GetLastError() };
-            debug_log(&format!("SERVER: GetLastError = {}", err));
             if err != 535 && err != 183 {
                 let _ = tx.send(Err(format!("ConnectNamedPipe failed with error {}", err)));
                 return;
             }
         }
-        debug_log("SERVER: pipe connected OK");
         let _ = tx.send(Ok(()));
     });
 
     match rx.recv_timeout(Duration::from_secs(30)) {
         Ok(Ok(())) => {
-            debug_log("SERVER: pipe File created from handle");
             unsafe { Ok(std::fs::File::from_raw_handle(handle)) }
         },
         Ok(Err(e)) => {
-            debug_log(&format!("SERVER: ConnectNamedPipe error: {}", e));
             unsafe { CloseHandle(handle); }
             Err(e)
         }
         Err(_) => {
-            debug_log("SERVER: TIMEOUT waiting for pipe connection");
             unsafe { CloseHandle(handle); }
             Err("Elevated process did not connect within 30 seconds".to_string())
         }
     }
 }
-
-        debug_log(&format!("SERVER: spawn_with_size_and_cwd id={}, profile={}, elevated={}, is_app_elevated={}", id, profile, elevated, is_app_elevated()));
 
         let (writer, mut reader, child_arc, pid): (
             Arc<Mutex<Box<dyn Write + Send>>>,
@@ -556,8 +505,7 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
                 
                 let pipe_in_name = format!("kterm_pipe_in_{}", pipe_uuid);
                 let pipe_out_name = format!("kterm_pipe_out_{}", pipe_uuid);
-                debug_log(&format!("SERVER: creating named pipes for '{}' with uuid '{}'", id, pipe_uuid));
-                
+
                 let handle_in = create_win32_named_pipe_handle(&pipe_in_name)?;
                 let handle_out = match create_win32_named_pipe_handle(&pipe_out_name) {
                     Ok(h) => h,
@@ -567,7 +515,6 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
                         return Err(e);
                     }
                 };
-                debug_log("SERVER: pipe handles created");
 
                 let exe_path = std::env::current_exe()
                     .map_err(|e| {
@@ -576,13 +523,11 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
                         format!("Failed to get executable path: {}", e)
                     })?;
 
-                debug_log(&format!("SERVER: exe_path = {:?}", exe_path));
                 {
                     use std::os::windows::ffi::OsStrExt;
                     let path_w: Vec<u16> = exe_path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
                     let verb_w: Vec<u16> = std::ffi::OsStr::new("runas").encode_wide().chain(std::iter::once(0)).collect();
                     let params = format!("--elevated-pty-bridge \"{}:{}\" --profile \"{}\"", id, pipe_uuid, profile);
-                    debug_log(&format!("SERVER: ShellExecuteW params = '{}'", params));
                     let params_w: Vec<u16> = std::ffi::OsStr::new(&params).encode_wide().chain(std::iter::once(0)).collect();
 
                     unsafe {
@@ -605,27 +550,17 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
                             std::ptr::null(),
                             0,
                         );
-                        debug_log(&format!("SERVER: ShellExecuteW returned {:?}", result as isize));
                         if (result as isize) <= 32 {
-                            debug_log("SERVER: ShellExecuteW FAILED (UAC denied?)");
                             CloseHandle(handle_in);
                             CloseHandle(handle_out);
                             return Err("Failed to launch elevated process (UAC denied or not available)".to_string());
                         }
-                        debug_log("SERVER: ShellExecuteW succeeded, elevated process launched");
                     }
                 }
 
                 let file_in = connect_win32_named_pipe(handle_in)?;
                 let file_out = connect_win32_named_pipe(handle_out)?;
-                
-                {
-                    use std::os::windows::io::AsRawHandle;
-                    debug_log(&format!("SERVER: file_in raw handle: {:?}", file_in.as_raw_handle()));
-                }
-                
-                debug_log("SERVER: pipes connected, creating tab session");
-                
+
                 (
                     Arc::new(Mutex::new(Box::new(file_in) as Box<dyn Write + Send>)),
                     Box::new(file_out) as Box<dyn Read + Send>,
@@ -700,12 +635,10 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
 
         // Reader thread for stdout/stderr streaming
         std::thread::spawn(move || {
-            debug_log("SERVER-RX: reader thread started");
             let mut buf = [0u8; 1024];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => {
-                        debug_log("SERVER-RX: read returned 0 (EOF)");
                         break;
                     },
                     Ok(n) => {
@@ -721,13 +654,11 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
                         }
                         let _ = tx_clone.send(chunk.to_vec());
                     }
-                    Err(e) => {
-                        debug_log(&format!("SERVER-RX: read failed: {}", e));
+                    Err(_) => {
                         break;
                     },
                 }
             }
-            debug_log("SERVER-RX: thread marking dead and notifying exit");
             *is_dead_clone.lock().unwrap() = true;
             let cb_opt = self_clone.on_exit.lock().unwrap().clone();
             if let Some(cb) = cb_opt {
@@ -763,7 +694,6 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
 
         let map_key = format!("{}:{}", window_id, id);
         self.sessions.lock().unwrap().insert(map_key, session.clone());
-        debug_log(&format!("SERVER: spawn_with_size_and_cwd returning Ok(session) for {}", id));
         Ok(session)
     }
 
@@ -866,7 +796,6 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
         });
 
         if let Some(key) = target_key {
-            debug_log(&format!("SERVER: PtyManager::close_in_window removing key '{}'", key));
             if let Some(session) = lock.remove(&key) {
                 let child_opt = session._child.lock().unwrap().take();
                 if let Some(mut child) = child_opt {
