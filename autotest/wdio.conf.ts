@@ -1,6 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Options } from '@wdio/types'
+// Pin msedgedriver.exe (autotest/.cache/) on PATH so @wdio/tauri-service
+// reuses it instead of downloading a fresh copy into %TEMP%\msedgedriver on
+// every launch (never cleaned; 44GB accumulated). Re-downloads only when the
+// installed WebView2 runtime bumps its major version.
+import { ensure as ensureMsEdgeDriver } from './scripts/ensure-msedgedriver.cjs'
+const pinnedDriver = ensureMsEdgeDriver()
+if (pinnedDriver.driverPath) {
+  process.env.PATH = `${path.dirname(pinnedDriver.driverPath)};${process.env.PATH}`
+}
 import { APP_BINARY, APPDATA_DIR, SCREENSHOT_ACTUAL, TMP_DIR } from './src/helpers/paths.js'
 import { ensureIsolatedAppdata, killAllKterm } from './src/helpers/env.js'
 import { startTest, endTest, step, addScreenshot, currentTest, relToAutotest } from './src/helpers/run.js'

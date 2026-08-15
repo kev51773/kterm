@@ -26,6 +26,14 @@ for (const rel of targets) {
     'const maxAttempts = 100;',
     'const maxAttempts = 1;'
   );
+  // Modern msedgedriver prints "Microsoft Edge WebDriver X.Y.Z", which the
+  // service's /MSEdgeDriver/ regex never matches — so it never reuses a PATH
+  // driver and re-downloads into %TEMP%\msedgedriver on every launch (~42MB
+  // each, never cleaned). See scripts/ensure-msedgedriver.cjs.
+  src = src.replace(
+    'versionOutput.match(/MSEdgeDriver ([\\d.]+)/)',
+    'versionOutput.match(/(?:MSEdgeDriver|Edge WebDriver) ([\\d.]+)/)'
+  );
   if (src !== before) {
     fs.writeFileSync(file, src);
     changed++;

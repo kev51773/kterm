@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Pinned msedgedriver.exe (see scripts/ensure-msedgedriver.cjs)
+.cache/
+
 # Test runtime output
 logs/
 tmp/
