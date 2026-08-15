@@ -1119,7 +1119,7 @@ function connectWebSocket(instance: TabInstance) {
         // cols, pushing a line into scrollback — a phantom scrollbar. Fit now
         // unless the pane is part of a split that still needs the window grown
         // (the ResizeObserver fits it once the grow lands).
-        if (instance.element.isConnected && !splitGrowPending()) {
+        if (instance.element.isConnected && !splitGrowPending() && !unsplitShrinkPending) {
           instance.fitAddon.fit();
         }
       });
@@ -1320,7 +1320,7 @@ function renderActiveLayout() {
       const targetRows = activeAppConfig.default_rows || 30;
       const fitActivePanes = () => {
         for (const [id, instance] of tabsMap.entries()) {
-          if (containsTab(activeLayoutNode, id) && instance.historyApplied) {
+          if (containsTab(activeLayoutNode, id) && instance.historyApplied && !unsplitShrinkPending) {
             instance.fitAddon.fit();
           }
         }
@@ -1345,6 +1345,7 @@ function renderActiveLayout() {
           // runs while the pane is still one row taller at the split-grown
           // window, and the 31→30 shrink demotes that line into scrollback.
           lastAdjustedWasSplit = false;
+          unsplitShrinkPending = true;
           adjustWindowForGrid(activeAppConfig.default_cols || 120, activeAppConfig.default_rows || 30, true);
         } else {
           fitActivePanes();
@@ -1400,6 +1401,12 @@ function getXtermCellDimensions(): { width: number; height: number } {
 
 let hasAdjustedWindowSize = false;
 let lastAdjustedWasSplit = false;
+
+// True from the moment an un-split orders the window to shrink back to the
+// single-pane target until the shrink actually lands. No fit may run while
+// this is set: the pane is still one row taller at the split-grown window,
+// and fitting there lets the 31→30 shrink demote a line into scrollback.
+let unsplitShrinkPending = false;
 
 // A split layout wraps panes in .split-sub-container (2px padding) +
 // .split-pane-wrapper (2px border): 8px of vertical chrome a single pane
@@ -2051,11 +2058,23 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
 });
 
 const resizeObserver = new ResizeObserver(() => {
+  if (unsplitShrinkPending) {
+    // Clear once the window has actually shrunk back to the single-pane
+    // target; the container resize below is that landing. Only then may fits
+    // run again (at the final pane size).
+    const { height: cellHeight } = getXtermCellDimensions();
+    const padding = activeAppConfig.terminal_padding || 8;
+    const rows = activeAppConfig.default_rows || 30;
+    const settledHeight = Math.ceil(rows * cellHeight + 0.5 + 41 + padding * 2) - 41;
+    if (terminalContainerEl.offsetHeight <= settledHeight) {
+      unsplitShrinkPending = false;
+    }
+  }
   if (activeTabId) {
     const activeLayoutNode = currentLayouts.find((node) => containsTab(node, activeTabId!));
     if (activeLayoutNode) {
       for (const [id, instance] of tabsMap.entries()) {
-        if (containsTab(activeLayoutNode, id) && instance.historyApplied) {
+        if (containsTab(activeLayoutNode, id) && instance.historyApplied && !unsplitShrinkPending) {
           instance.fitAddon.fit();
         }
       }
