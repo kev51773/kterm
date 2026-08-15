@@ -69,12 +69,6 @@ pub struct SetTitleRequest {
 }
 
 #[derive(Deserialize)]
-pub struct SetWindowTitleRequest {
-    pub window: Option<String>,
-    pub title: String,
-}
-
-#[derive(Deserialize)]
 pub struct SetBadgeRequest {
     pub targets: Vec<String>,
     pub badge: String,
@@ -176,7 +170,6 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/tabs/:id/read", get(read_tab_buffer))
         .route("/tabs/:id/wait", post(wait_tab_output))
         .route("/windows", get(list_windows).post(create_window))
-        .route("/windows/title", post(set_window_title))
         .route("/windows/close", post(close_window))
         .route("/windows/show", post(show_window))
         .route("/windows/size", post(resize_window))
@@ -361,33 +354,6 @@ async fn set_title(
 
     for session in sessions {
         *session.title.lock().unwrap() = req.title.clone();
-    }
-
-    Ok(StatusCode::OK)
-}
-
-async fn set_window_title(
-    State(state): State<AppState>,
-    Json(req): Json<SetWindowTitleRequest>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    let target_win = req
-        .window
-        .clone()
-        .filter(|w| !w.trim().is_empty())
-        .unwrap_or_else(|| "win-1".to_string());
-
-    let formatted_title = format!("kterm.exe - {} - {}", req.title, target_win);
-
-    state
-        .window_titles
-        .lock()
-        .unwrap()
-        .insert(target_win.clone(), formatted_title.clone());
-
-    if let Some(app) = &state.app_handle {
-        if let Some(win) = app.get_webview_window(&target_win) {
-            let _ = win.set_title(&formatted_title);
-        }
     }
 
     Ok(StatusCode::OK)

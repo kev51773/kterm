@@ -7,7 +7,6 @@ import {
   setTabTitle,
   setBadge,
   setColor,
-  setWindowTitle,
 } from '../../src/helpers/daemon.js'
 
 describe('22-tabs', () => {
@@ -36,10 +35,5 @@ describe('22-tabs', () => {
     expect(info?.title).toBe('Server Logs')
     expect(info?.badge).toBe('PROD')
     expect(info?.color).toBe('#E53935')
-  })
-
-  it('sets and restores the window title', () => {
-    setWindowTitle('win-1', 'Main Workspace')
-    setWindowTitle('win-1', 'kterm.exe - A scriptable terminal - win-1')
   })
 })

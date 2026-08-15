@@ -30,11 +30,10 @@ use clap::Parser;
     kterm --select-tab tab1 --send-text git status
     kterm --select-tab tab1 --send-text npm run dev
 
-  Tab titles, badges, colors, & window title:
+  Tab titles, badges, & colors:
     kterm --select-tab tab1 --send-title Server Logs
     kterm --select-tab tab1 --set-badge PROD
     kterm --select-tab tab1 --set-color #E53935
-    kterm --window win-1 --set-window-title Main Workspace
 
   Layout management:
     kterm --select-tab tab1 --unsplit
@@ -97,15 +96,6 @@ pub struct CliArgs {
         help = "Set unquoted title for selected tab"
     )]
     pub send_title: Option<Vec<String>>,
-
-    #[arg(
-        long,
-        num_args = 1..,
-        trailing_var_arg = true,
-        allow_hyphen_values = true,
-        help = "Set unquoted title for target window"
-    )]
-    pub set_window_title: Option<Vec<String>>,
 
     #[arg(long, help = "Set visual badge for selected tab")]
     pub set_badge: Option<String>,
@@ -207,7 +197,6 @@ Options:
       --select-tab <SELECT_TAB>...    Select target tab by ID or Title
       --send-text <SEND_TEXT>...      Send unquoted text/command to selected tab
       --send-title <SEND_TITLE>...    Set unquoted title for selected tab
-      --set-window-title <TITLE>...   Set unquoted title for target window
       --set-badge <SET_BADGE>         Set visual badge for selected tab
       --set-color <SET_COLOR>         Set accent color for selected tab
       --focus                         Bring target window/tab to front
@@ -259,10 +248,9 @@ EXAMPLES:
     kterm --select-tab tab1 --wait-for hello
     kterm --select-tab tab1 --wait-for-prompt
 
-  Tab titles, badges, colors, & window title:
+  Tab titles, badges, & colors:
     kterm --select-tab tab1 --send-title Server Logs
     kterm --select-tab tab1 --set-badge PROD
-    kterm --select-tab tab1 --set-color #E53935
-    kterm --window win-1 --set-window-title Main Workspace"#
+    kterm --select-tab tab1 --set-color #E53935"#
     );
 }

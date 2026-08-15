@@ -111,10 +111,6 @@ export function exportLayout(window: string, file: string): void {
   cliOk(['--export-layout', file, '--window', window])
 }
 
-export function setWindowTitle(window: string, title: string): void {
-  cliOk(['--window', window, '--set-window-title', title])
-}
-
 export function normalizeWindow(window = 'win-1', keep = 1): string {
   let tabs = listTabs(window)
   while (tabs.length > keep) {

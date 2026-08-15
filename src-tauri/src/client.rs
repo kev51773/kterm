@@ -267,23 +267,6 @@ pub fn handle_client_mode(args: &CliArgs) -> Result<(), String> {
         return Ok(());
     }
 
-    if let Some(title_vec) = &args.set_window_title {
-        let title = title_vec.join(" ");
-        let body = json!({
-            "window": args.window.clone(),
-            "title": title,
-        });
-        let res = client
-            .post(format!("{}/windows/title", base_url))
-            .json(&body)
-            .send()
-            .map_err(|e| format!("Failed to set window title: {}", e))?;
-        if !res.status().is_success() {
-            return Err(format!("Set window title failed: {}", res.text().unwrap_or_default()));
-        }
-        return Ok(());
-    }
-
     if let Some(win_id) = &args.close_window {
         let body = json!({
             "window": win_id,
