@@ -128,6 +128,18 @@ describe('04-ux', () => {
       async () => (await $$('.xterm-decoration').length) > 0,
       { timeout: 10000 },
     )
+    // Highlights flash between two phases every 600ms (main.ts:99-100); wait
+    // for the blue phase so the screenshot is deterministic vs the baseline.
+    await browser.waitUntil(
+      async () => {
+        const dec = await $('.xterm-decoration')
+        if (!(await dec.isExisting())) return false
+        const bg = await dec.getCSSProperty('background-color')
+        const v = typeof bg.value === 'string' ? bg.value : ''
+        return /rgba?\(0,\s*68,\s*255/.test(v)
+      },
+      { timeout: 5000 },
+    )
     await captureScreenshot('04-ux', '02-highlights-added')
 
     step('Clicked remove (×) on the highlight')

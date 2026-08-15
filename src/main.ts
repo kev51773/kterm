@@ -61,6 +61,7 @@ interface TabInstance {
   ws: WebSocket | null;
   wsClosingIntentionally: boolean;
   element: HTMLElement;
+  historyApplied: boolean;
 }
 
 const tabsMap = new Map<string, TabInstance>();
@@ -542,8 +543,10 @@ function applyAppConfig(config: AppConfig) {
     if ((instance.term as any)._core?._charSizeService) {
       (instance.term as any)._core._charSizeService.clear();
     }
-    instance.fitAddon.fit();
-    instance.term.refresh(0, instance.term.rows - 1);
+    if (instance.historyApplied) {
+      instance.fitAddon.fit();
+      instance.term.refresh(0, instance.term.rows - 1);
+    }
   }
   document.querySelectorAll<HTMLElement>('.split-pane-wrapper').forEach((el) => {
     el.style.padding = `${config.terminal_padding}px`;
@@ -866,6 +869,8 @@ function createTabLocal(tabData: TabData) {
     minimumContrastRatio: 1.2,
     fontFamily: activeAppConfig.font.family,
     fontSize: activeAppConfig.font.size,
+    cols: activeAppConfig.default_cols || 120,
+    rows: activeAppConfig.default_rows || 30,
     theme: {
       ...CAMPBELL_THEME,
       background: activeAppConfig.theme.background,
@@ -1057,6 +1062,7 @@ function createTabLocal(tabData: TabData) {
     ws: null,
     wsClosingIntentionally: false,
     element: pane,
+    historyApplied: false,
   };
 
   tabsMap.set(id, instance);
@@ -1104,7 +1110,22 @@ function connectWebSocket(instance: TabInstance) {
   });
 
   ws.onmessage = (event) => {
-    instance.term.write(event.data);
+    if (!instance.historyApplied) {
+      instance.historyApplied = true;
+      instance.term.write(event.data, () => {
+        // The daemon replays the startup history as the first message. It must
+        // be parsed at the spawn size (default_cols x default_rows) before any
+        // fit: fitting first re-wraps the startup banner to the narrower pane
+        // cols, pushing a line into scrollback — a phantom scrollbar. Fit now
+        // unless the pane is part of a split that still needs the window grown
+        // (the ResizeObserver fits it once the grow lands).
+        if (instance.element.isConnected && !splitGrowPending()) {
+          instance.fitAddon.fit();
+        }
+      });
+    } else {
+      instance.term.write(event.data);
+    }
   };
 
   ws.onclose = () => {
@@ -1295,12 +1316,40 @@ function renderActiveLayout() {
 
     // Fix Bug 2: Recalculate fit after DOM insertion
     requestAnimationFrame(() => {
-      for (const [id, instance] of tabsMap.entries()) {
-        if (containsTab(activeLayoutNode, id)) {
-          instance.fitAddon.fit();
+      const isSplit = activeLayoutNode.type !== 'pane';
+      const targetRows = activeAppConfig.default_rows || 30;
+      const fitActivePanes = () => {
+        for (const [id, instance] of tabsMap.entries()) {
+          if (containsTab(activeLayoutNode, id) && instance.historyApplied) {
+            instance.fitAddon.fit();
+          }
+        }
+      };
+      if (isSplit && !lastAdjustedWasSplit) {
+        lastAdjustedWasSplit = true;
+        if (splitGrowPending()) {
+          // Split panes lose 8px of chrome (sub-container padding + wrapper
+          // border), so the window must grow for them to hold the full grid.
+          // Fit is deferred to the ResizeObserver that fires once the window
+          // grows, so the panes are never shrunk below the grid (a shrink
+          // would turn their excess line into permanent scrollback).
+          adjustWindowForGrid(activeAppConfig.default_cols || 120, targetRows, true);
+        } else {
+          // Window already tall enough — fit now.
+          fitActivePanes();
+        }
+      } else {
+        if (!isSplit && lastAdjustedWasSplit) {
+          // Leaving a split: shrink the window back and let the ResizeObserver
+          // refit the single pane at its final size. Fitting before the shrink
+          // runs while the pane is still one row taller at the split-grown
+          // window, and the 31→30 shrink demotes that line into scrollback.
+          lastAdjustedWasSplit = false;
+          adjustWindowForGrid(activeAppConfig.default_cols || 120, activeAppConfig.default_rows || 30, true);
+        } else {
+          fitActivePanes();
         }
       }
-      adjustWindowForGrid(activeAppConfig.default_cols || 120, activeAppConfig.default_rows || 30);
       if (activePaneId) {
         tabsMap.get(activePaneId)?.term.focus();
       }
@@ -1350,6 +1399,31 @@ function getXtermCellDimensions(): { width: number; height: number } {
 }
 
 let hasAdjustedWindowSize = false;
+let lastAdjustedWasSplit = false;
+
+// A split layout wraps panes in .split-sub-container (2px padding) +
+// .split-pane-wrapper (2px border): 8px of vertical chrome a single pane
+// doesn't pay. Without reserving it, split panes fall one row short of the
+// grid (503px vs 510px) and fit() floors to 29 rows, leaving the shell's
+// 30th line as visible scrollback — a phantom scrollbar. Resize the window
+// only when a split is active so single-pane layouts stay byte-identical.
+function activeLayoutIsSplit(): boolean {
+  if (!activeTabId) return false;
+  const node = currentLayouts.find((n) => containsTab(n, activeTabId!));
+  return !!node && node.type !== 'pane';
+}
+
+// True when a split layout is active and its panes cannot yet hold the full
+// grid — the window still needs to grow before any fit may run.
+function splitGrowPending(): boolean {
+  if (!activeTabId) return false;
+  const node = currentLayouts.find((n) => containsTab(n, activeTabId!));
+  if (!node || node.type === 'pane') return false;
+  const { height: cellHeight } = getXtermCellDimensions();
+  const padding = activeAppConfig.terminal_padding || 8;
+  const rows = activeAppConfig.default_rows || 30;
+  return terminalContainerEl.offsetHeight < Math.ceil(rows * cellHeight + 8 + 0.5) + padding * 2;
+}
 
 async function adjustWindowForGrid(targetCols: number = 120, targetRows: number = 30, force: boolean = false): Promise<void> {
   if (hasAdjustedWindowSize && !force) return;
@@ -1358,11 +1432,16 @@ async function adjustWindowForGrid(targetCols: number = 120, targetRows: number 
   const padding = activeAppConfig.terminal_padding || 8;
 
   const scrollbarWidth = 16;
+  const splitReserve = activeLayoutIsSplit() ? 8 : 0;
   const availWidth = targetCols * cellWidth + scrollbarWidth + 0.5;
-  const availHeight = targetRows * cellHeight + 0.5;
+  const availHeight = targetRows * cellHeight + splitReserve + 0.5;
 
   const neededWidth = Math.ceil(availWidth + (padding * 2));
   const neededHeight = Math.ceil(availHeight + 41 + (padding * 2));
+
+  const priorWidth = window.innerWidth;
+  const priorHeight = window.innerHeight;
+  const needsResize = priorWidth !== neededWidth || priorHeight !== neededHeight;
 
   try {
     const appWindow = getCurrentWindow();
@@ -1382,11 +1461,17 @@ async function adjustWindowForGrid(targetCols: number = 120, targetRows: number 
 
   hasAdjustedWindowSize = true;
 
-  setTimeout(() => {
+  // Fit here only when no resize is pending: the ResizeObserver fits on any
+  // real resize. Fitting while a grow/shrink is in flight races the panes at
+  // an intermediate size, and the eventual 1-row grow/shrink demotes a line
+  // into scrollback — a permanent phantom scrollbar.
+  if (!needsResize) {
     for (const instance of tabsMap.values()) {
-      instance.fitAddon.fit();
+      if (instance.historyApplied) {
+        instance.fitAddon.fit();
+      }
     }
-  }, 50);
+  }
 }
 
 function setFocusedPane(tabId: string) {
@@ -1970,7 +2055,7 @@ const resizeObserver = new ResizeObserver(() => {
     const activeLayoutNode = currentLayouts.find((node) => containsTab(node, activeTabId!));
     if (activeLayoutNode) {
       for (const [id, instance] of tabsMap.entries()) {
-        if (containsTab(activeLayoutNode, id)) {
+        if (containsTab(activeLayoutNode, id) && instance.historyApplied) {
           instance.fitAddon.fit();
         }
       }
