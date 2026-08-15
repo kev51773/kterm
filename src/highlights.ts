@@ -62,7 +62,8 @@ export function updatePaneHighlights(paneId: string) {
               el.textContent = matchedText;
               el.style.color = matchFg;
               el.style.backgroundColor = matchBg;
-              el.style.fontWeight = 'bold';
+              el.style.fontFamily = inst.term.options.fontFamily || 'Consolas, monospace';
+              el.style.fontSize = `${inst.term.options.fontSize || 14}px`;
               el.style.display = 'flex';
               el.style.alignItems = 'center';
               el.style.pointerEvents = 'none';
