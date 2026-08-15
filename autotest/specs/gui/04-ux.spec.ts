@@ -103,6 +103,45 @@ describe('04-ux', () => {
     await resetGuiState()
   })
 
+  it('1b. Set badge and color from tab context menu', async () => {
+    await resetGuiState()
+    await openContextMenu('.tab-item')
+    const badgeItem = await $('#ctx-tab-badge')
+    await badgeItem.click()
+
+    const modalInput = await $('.custom-modal-input')
+    await modalInput.waitForExist({ timeout: 5000 })
+    await modalInput.setValue('GUI-BADGE')
+    const confirmBtn = await $('.confirm-btn')
+    await confirmBtn.click()
+
+    await browser.waitUntil(
+      async () => (await $$('.tab-badge').length) > 0,
+      { timeout: 15000 },
+    )
+    const badgeText = await $('.tab-badge').getText()
+    expect(badgeText).toBe('GUI-BADGE')
+
+    await openContextMenu('.tab-item')
+    const colorItem = await $('#ctx-tab-color')
+    await colorItem.click()
+
+    const modalInput2 = await $('.custom-modal-input')
+    await modalInput2.waitForExist({ timeout: 5000 })
+    await modalInput2.setValue('#00FF00')
+    const confirmBtn2 = await $('.confirm-btn')
+    await confirmBtn2.click()
+
+    await browser.waitUntil(async () => {
+      const c = await browser.execute(() => {
+        const el = document.querySelector('.tab-item') as HTMLElement | null
+        return el ? getComputedStyle(el).borderColor : null
+      })
+      return c === 'rgb(0, 255, 0)'
+    }, { timeout: 15000 })
+    await resetGuiState()
+  })
+
   it('2. Word highlights: add, render, remove', async () => {
     await resetGuiState()
     const t = await firstTabId()

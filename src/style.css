@@ -671,6 +671,50 @@ html, body {
   flex: 1;
 }
 
+.color-swatches-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.color-swatch-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.color-swatch-btn:hover {
+  transform: scale(1.18);
+}
+
+.color-swatch-btn.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
+}
+
+.color-swatch-btn.clear-swatch {
+  background: transparent !important;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  color: #abb2bf;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.color-swatch-btn.clear-swatch:hover {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
 .settings-group input:focus,
 .settings-group select:focus {
   border-color: var(--highlight-color, #61afef);

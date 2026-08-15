@@ -241,6 +241,170 @@ function showInputModal(options: {
   });
 }
 
+function adjustHexBrightness(hex: string, factor: number): string {
+  let cleanHex = hex.trim().replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map((c) => c + c).join('');
+  }
+  let num = parseInt(cleanHex, 16);
+  if (isNaN(num)) return hex;
+  let r = Math.min(255, Math.max(0, Math.round(((num >> 16) & 0xff) * factor)));
+  let g = Math.min(255, Math.max(0, Math.round(((num >> 8) & 0xff) * factor)));
+  let b = Math.min(255, Math.max(0, Math.round((num & 0xff) * factor)));
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function showTabColorModal(options: {
+  initialValue?: string;
+  onConfirm: (val: string) => void;
+}) {
+  const overlay = document.createElement('div');
+  overlay.className = 'custom-modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'custom-input-modal';
+
+  const initialVal = options.initialValue || '';
+  let hexVal = initialVal.trim();
+  if (!/^#[0-9A-Fa-f]{6}$/.test(hexVal)) {
+    hexVal = '#1e88e5';
+  }
+
+  const presetSwatches = [
+    '#e53935', // Red
+    '#fb8c00', // Orange
+    '#fdd835', // Yellow
+    '#43a047', // Green
+    '#1e88e5', // Blue
+    '#8e24aa', // Purple
+    '#00acc1', // Cyan
+    '#d81b60', // Pink
+  ];
+
+  const swatchesHtml = presetSwatches
+    .map(
+      (c) =>
+        `<button type="button" class="color-swatch-btn${initialVal.toLowerCase() === c.toLowerCase() ? ' active' : ''}" data-color="${c}" style="background-color: ${c};" title="${c}"></button>`
+    )
+    .join('');
+
+  modal.innerHTML = `
+    <div class="custom-modal-header">
+      <span>Set Tab Color</span>
+      <button class="custom-modal-close-btn">✕</button>
+    </div>
+    <div class="custom-modal-body">
+      <div class="color-swatches-row">
+        ${swatchesHtml}
+        <button type="button" class="color-swatch-btn clear-swatch${!initialVal ? ' active' : ''}" data-color="" title="Clear Color">✕</button>
+      </div>
+      <div class="color-picker-row">
+        <input type="color" class="color-picker-swatch" value="${hexVal}" title="Color Swatch" />
+        <input type="range" class="color-brightness-slider" min="0" max="200" value="100" title="Adjust Brightness" />
+        <input type="text" class="custom-modal-input color-picker-text" placeholder="Hex color or name (empty to clear)" value="${escapeHtml(initialVal)}" />
+      </div>
+    </div>
+    <div class="custom-modal-footer">
+      <button class="custom-modal-btn custom-modal-btn-secondary cancel-btn">Cancel</button>
+      <button class="custom-modal-btn custom-modal-btn-primary confirm-btn">Set Color</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const textEl = modal.querySelector('.custom-modal-input') as HTMLInputElement;
+  const pickerEl = modal.querySelector('.color-picker-swatch') as HTMLInputElement;
+  const sliderEl = modal.querySelector('.color-brightness-slider') as HTMLInputElement;
+  const confirmBtn = modal.querySelector('.confirm-btn') as HTMLButtonElement;
+  const cancelBtn = modal.querySelector('.cancel-btn') as HTMLButtonElement;
+  const closeBtn = modal.querySelector('.custom-modal-close-btn') as HTMLButtonElement;
+  const swatchBtns = modal.querySelectorAll<HTMLButtonElement>('.color-swatch-btn');
+
+  let baseColor = initialVal;
+
+  function updateActiveSwatch(color: string) {
+    swatchBtns.forEach((btn) => {
+      const btnColor = btn.getAttribute('data-color') || '';
+      if (btnColor.toLowerCase() === color.toLowerCase()) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  swatchBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const color = btn.getAttribute('data-color') || '';
+      textEl.value = color;
+      baseColor = color;
+      sliderEl.value = '100';
+      if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        pickerEl.value = color;
+      }
+      updateActiveSwatch(color);
+    });
+  });
+
+  pickerEl.addEventListener('input', () => {
+    baseColor = pickerEl.value;
+    sliderEl.value = '100';
+    textEl.value = pickerEl.value;
+    updateActiveSwatch(pickerEl.value);
+  });
+
+  textEl.addEventListener('input', () => {
+    const val = textEl.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+      baseColor = val;
+      sliderEl.value = '100';
+      pickerEl.value = val;
+    }
+    updateActiveSwatch(val);
+  });
+
+  sliderEl.addEventListener('input', () => {
+    const base = baseColor || textEl.value;
+    const factor = parseInt(sliderEl.value, 10) / 100;
+    const adjusted = adjustHexBrightness(base, factor);
+    textEl.value = adjusted;
+    if (/^#[0-9A-Fa-f]{6}$/.test(adjusted)) {
+      pickerEl.value = adjusted;
+    }
+    updateActiveSwatch(adjusted);
+  });
+
+  function close() {
+    overlay.remove();
+  }
+
+  function handleConfirm() {
+    const val = textEl.value;
+    close();
+    options.onConfirm(val);
+  }
+
+  confirmBtn.addEventListener('click', handleConfirm);
+  cancelBtn.addEventListener('click', close);
+  closeBtn.addEventListener('click', close);
+
+  textEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleConfirm();
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+
+  textEl.focus();
+  textEl.select();
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+}
+
 function showHighlightsModal(_term: Terminal, paneId: string) {
   const overlay = document.createElement('div');
   overlay.className = 'custom-modal-overlay';
@@ -1875,10 +2039,12 @@ function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPan
   });
 }
 
-// Tab Header Context Menu (Rename, Close)
+// Tab Header Context Menu (Rename, Set Badge, Set Color, Close)
 function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
   contextMenuEl.innerHTML = `
     <div class="context-menu-item" id="ctx-tab-rename">Rename</div>
+    <div class="context-menu-item" id="ctx-tab-badge">Set Badge...</div>
+    <div class="context-menu-item" id="ctx-tab-color">Set Color...</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item" id="ctx-tab-close">Close Tab <span class="context-menu-shortcut">Ctrl+Shift+-</span></div>
   `;
@@ -1915,6 +2081,77 @@ function showTabHeaderContextMenu(x: number, y: number, targetTabId: string) {
             }
           } catch (e) {
             console.error('Failed to rename tab', e);
+          }
+        }
+      },
+    });
+  });
+
+  document.getElementById('ctx-tab-badge')?.addEventListener('click', () => {
+    contextMenuEl.style.display = 'none';
+    const currentInst = tabsMap.get(targetTabId);
+    const currentBadge = currentInst?.badge || '';
+    showInputModal({
+      title: 'Set Tab Badge',
+      placeholder: 'Enter badge text (leave empty to clear)...',
+      initialValue: currentBadge,
+      confirmLabel: 'Set Badge',
+      onConfirm: async (newBadge) => {
+        if (newBadge !== null) {
+          const badgeVal = newBadge.trim();
+          try {
+            if (currentInst) {
+              currentInst.badge = badgeVal;
+            }
+            renderTabBarHeaders();
+            const res = await fetch(`${DAEMON_URL}/tabs/badge`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                targets: [targetTabId],
+                badge: badgeVal,
+                window: currentWindowId,
+              }),
+            });
+            if (res.ok) {
+              await syncTabs();
+            }
+          } catch (e) {
+            console.error('Failed to set tab badge', e);
+          }
+        }
+      },
+    });
+  });
+
+  document.getElementById('ctx-tab-color')?.addEventListener('click', () => {
+    contextMenuEl.style.display = 'none';
+    const currentInst = tabsMap.get(targetTabId);
+    const currentColor = currentInst?.color || '';
+    showTabColorModal({
+      initialValue: currentColor,
+      onConfirm: async (newColor) => {
+        if (newColor !== null) {
+          const colorVal = newColor.trim();
+          try {
+            if (currentInst) {
+              currentInst.color = colorVal;
+            }
+            renderTabBarHeaders();
+            const res = await fetch(`${DAEMON_URL}/tabs/color`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                targets: [targetTabId],
+                color: colorVal,
+                window: currentWindowId,
+              }),
+            });
+            if (res.ok) {
+              await syncTabs();
+            }
+          } catch (e) {
+            console.error('Failed to set tab color', e);
           }
         }
       },
