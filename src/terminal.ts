@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
+import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -11,7 +12,6 @@ import {
   PaneInstance,
   tabsMap,
   activeAppConfig,
-  currentWindowId,
   activeTabId,
   activePaneId,
   setActiveTabId,
@@ -19,7 +19,7 @@ import {
   hasAdjustedWindowSize,
   setHasAdjustedWindowSize,
 } from './state';
-import { DAEMON_URL, CAMPBELL_THEME } from './config';
+import { CAMPBELL_THEME } from './config';
 import { updatePaneHighlights } from './highlights';
 import { showFindBar, getTerminalBufferText } from './findBar';
 import { connectWebSocket } from './daemon';
@@ -362,13 +362,7 @@ export async function adjustWindowForGrid(
     console.warn('Could not set window size via Tauri API:', e);
   }
 
-  try {
-    await fetch(`${DAEMON_URL}/windows/size`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ window: currentWindowId, width: neededWidth, height: neededHeight }),
-    });
-  } catch (e) {}
+
 
   setHasAdjustedWindowSize(true);
 
@@ -390,24 +384,13 @@ export async function pasteToPane(tabId: string) {
   try {
     let text = '';
     try {
-      const res = await fetch(`${DAEMON_URL}/clipboard`);
-      if (res.ok) {
-        const data = await res.json();
-        text = data.text || '';
-      }
+      text = await invoke<string>('get_clipboard');
     } catch {}
 
-    if (!text) {
-      text = await navigator.clipboard.readText();
-    }
     if (!text) return;
 
     if (inst) {
-      if (inst.ws && inst.ws.readyState === WebSocket.OPEN) {
-        inst.ws.send(text);
-      } else {
-        inst.term.paste(text);
-      }
+      invoke('send_pty_input', { tabId: inst.id, data: text });
       inst.term.focus();
     }
   } catch (e) {

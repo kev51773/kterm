@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+
 export interface AppConfig {
   default_profile: string;
   default_cols?: number;
@@ -56,12 +58,16 @@ export class SettingsModal {
   private currentConfig: AppConfig | null = null;
   private initialConfig: AppConfig | null = null;
   private isSaved: boolean = false;
-  private daemonUrl: string;
   private onSaveCallback: (config: AppConfig) => void;
 
-  constructor(daemonUrl: string, onSaveCallback: (config: AppConfig) => void) {
-    this.daemonUrl = daemonUrl;
-    this.onSaveCallback = onSaveCallback;
+  constructor(arg1: any, arg2?: (config: AppConfig) => void) {
+    if (typeof arg1 === 'function') {
+      this.onSaveCallback = arg1;
+    } else if (arg2) {
+      this.onSaveCallback = arg2;
+    } else {
+      this.onSaveCallback = () => {};
+    }
   }
 
   public async open() {
@@ -88,10 +94,7 @@ export class SettingsModal {
 
   private async fetchConfig() {
     try {
-      const res = await fetch(`${this.daemonUrl}/config`);
-      if (res.ok) {
-        this.currentConfig = await res.json();
-      }
+      this.currentConfig = await invoke<AppConfig>('get_config');
     } catch (e) {
       console.error('Failed to fetch config:', e);
       this.currentConfig = {
@@ -483,13 +486,9 @@ export class SettingsModal {
     this.close();
 
     try {
-      await fetch(`${this.daemonUrl}/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.currentConfig),
-      });
+      await invoke('update_config', { config: this.currentConfig });
     } catch (e) {
-      console.error('Failed to save config:', e);
+      console.error('Failed to save config via IPC:', e);
     }
   }
 }

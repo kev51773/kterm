@@ -2,11 +2,10 @@ import { $, $$, browser } from '@wdio/globals'
 import { focusTerminal, openContextMenu, waitForTabCount as waitForUiTabs } from '../../src/helpers/ui.js'
 import { resetGuiState, activeTabTitle } from '../../src/helpers/state.js'
 import {
-  listTabs, setTabTitle, setBadge, setColor,
+  cliOk, listTabs, setTabTitle, setBadge, setColor,
   waitForPrompt, sendText, waitFor, splitTab, unsplit, getClipboard, setClipboard,
 } from '../../src/helpers/daemon.js'
 import { captureScreenshot } from '../../src/helpers/screenshot.js'
-import { DAEMON_BASE_URL } from '../../src/helpers/paths.js'
 import { step } from '../../src/helpers/run.js'
 
 async function waitForTabTitle(expected: string, timeout = 15000): Promise<void> {
@@ -27,8 +26,7 @@ async function firstTabId(): Promise<string> {
 }
 
 async function splitRatio(): Promise<number> {
-  const res = await fetch(`${DAEMON_BASE_URL}/layout?window=win-1`)
-  const nodes = await res.json()
+  const nodes = JSON.parse(cliOk(['--get-layout', '--window', 'win-1']))
   const findSplit = (n: any): any => {
     if (!n) return null
     if (n.type === 'split') return n

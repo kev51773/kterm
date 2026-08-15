@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import {
   TabData,
   tabsMap,
@@ -9,7 +10,7 @@ import {
   setActiveTabId,
   setActivePaneId,
 } from './state';
-import { DAEMON_URL, getContainerGridDimensions } from './config';
+import { getContainerGridDimensions } from './config';
 import { createTabLocal, removeTabLocal } from './terminal';
 import { renderActiveLayout, containsTab, getTabIdsInNode } from './splits';
 import { syncTabs } from './daemon';
@@ -61,15 +62,9 @@ export function switchTab(id: string) {
 
 export async function closeTab(id: string) {
   try {
-    const res = await fetch(`${DAEMON_URL}/tabs/close`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targets: [id], window: currentWindowId }),
-    });
-    if (res.ok) {
-      removeTabLocal(id);
-      await syncTabs();
-    }
+    await invoke('close_tabs', { targets: [id], window: currentWindowId });
+    removeTabLocal(id);
+    await syncTabs();
   } catch (e) {
     console.error('Failed to close tab', e);
   }
@@ -100,24 +95,18 @@ export async function spawnTabWithProfile(
 ) {
   try {
     const { cols, rows } = getContainerGridDimensions();
-    const res = await fetch(`${DAEMON_URL}/tabs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, window: currentWindowId, cols, rows, elevated }),
+    const tabData = await invoke<TabData>('create_tab', {
+      payload: { profile, window: currentWindowId, cols, rows, elevated },
     });
 
-    if (res.ok) {
-      const tabData: TabData = await res.json();
+    if (tabData) {
       createTabLocal(tabData);
       await syncTabs();
       switchTab(tabData.id);
-    } else {
-      const errText = await res.text();
-      console.error(`Failed to create tab (elevated=${elevated}):`, errText);
-      alert(errText || 'Launching Administrator tabs requires running kterm as Administrator.');
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error(`Failed to create new tab with profile ${profile}`, e);
+    alert(String(e) || 'Launching Administrator tabs requires running kterm as Administrator.');
   }
 }
 
@@ -197,14 +186,8 @@ export function renderTabBarHeaders() {
     closeEl.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       try {
-        const res = await fetch(`${DAEMON_URL}/tabs/close`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targets: paneIds, window: currentWindowId }),
-        });
-        if (res.ok) {
-          await syncTabs();
-        }
+        await invoke('close_tabs', { targets: paneIds, window: currentWindowId });
+        await syncTabs();
       } catch (e) {
         console.error('Failed to close tab group', e);
       }

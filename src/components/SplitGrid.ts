@@ -16,6 +16,17 @@ export interface SplitGridCallbacks {
   onPaneFocus: (tabId: string) => void;
 }
 
+export function updateRatioInTree(node: LayoutNode, splitId: string, ratio: number): boolean {
+  if (node.type === 'split') {
+    if (node.id === splitId) {
+      node.ratio = ratio;
+      return true;
+    }
+    return updateRatioInTree(node.first, splitId, ratio) || updateRatioInTree(node.second, splitId, ratio);
+  }
+  return false;
+}
+
 export function renderLayoutTree(
   node: LayoutNode,
   getPaneElement: (tabId: string) => HTMLElement | null,

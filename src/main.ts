@@ -1,6 +1,7 @@
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { SettingsModal } from './components/SettingsModal';
 import {
   tabsMap,
@@ -12,7 +13,7 @@ import {
   unsplitShrinkPending,
   setUnsplitShrinkPending,
 } from './state';
-import { DAEMON_URL, registerAdjustWindowForGrid, applyAppConfig } from './config';
+import { registerAdjustWindowForGrid, applyAppConfig } from './config';
 import {
   initDaemonConnection,
   syncTabs,
@@ -178,13 +179,9 @@ if (winCloseBtn) {
     e.stopPropagation();
     e.preventDefault();
     try {
-      await fetch(`${DAEMON_URL}/windows/close`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ window: currentWindowId }),
-      });
+      await invoke('close_window', { window: currentWindowId });
     } catch (err) {
-      console.error('Close via daemon failed:', err);
+      console.error('Close via IPC failed:', err);
       try {
         await getCurrentWindow().close();
       } catch (e2) {}
@@ -194,7 +191,7 @@ if (winCloseBtn) {
 
 // Settings Modal Setup
 const settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement;
-const settingsModal = new SettingsModal(DAEMON_URL, (newConfig) => {
+const settingsModal = new SettingsModal((newConfig: any) => {
   applyAppConfig(newConfig);
 });
 if (settingsBtn) settingsBtn.addEventListener('click', () => settingsModal.open());
@@ -361,29 +358,14 @@ export async function triggerExportSave(): Promise<void> {
 
     if (!filePath) return;
 
-    const res = await fetch(
-      `${DAEMON_URL}/export-layout?window=${encodeURIComponent(currentWindowId)}`
-    );
-    if (!res.ok) {
-      console.error('Export fetch failed:', await res.text());
-      return;
-    }
-    const yamlText = await res.text();
-
+    const yamlText = await invoke<string>('export_layout', { window: currentWindowId });
     await writeTextFile(filePath, yamlText);
     console.log(`[kterm] YAML Layout saved to: ${filePath}`);
 
     try {
-      const scRes = await fetch(`${DAEMON_URL}/export-shortcut`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath }),
-      });
-      if (scRes.ok) {
-        const scData = await scRes.json();
+      const scData = await invoke<{ shortcut: string }>('export_shortcut', { path: filePath });
+      if (scData && scData.shortcut) {
         console.log(`[kterm] Shortcut saved to: ${scData.shortcut}`);
-      } else {
-        console.error('[kterm] Shortcut creation failed:', await scRes.text());
       }
     } catch (scErr) {
       console.error('[kterm] Shortcut creation request error:', scErr);

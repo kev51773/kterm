@@ -137,8 +137,8 @@ export function getClipboard(): string {
 
 export async function daemonHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${DAEMON_BASE_URL}/health`)
-    return res.ok
+    const r = cli(['--list-tabs', '--json'])
+    return r.exitCode === 0
   } catch {
     return false
   }

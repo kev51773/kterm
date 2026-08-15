@@ -69,6 +69,12 @@ pub struct CliArgs {
     #[arg(long, help = "List active tabs")]
     pub list_tabs: bool,
 
+    #[arg(long, help = "Get current window layout tree JSON")]
+    pub get_layout: bool,
+
+    #[arg(long, help = "Get application config JSON")]
+    pub get_config: bool,
+
     #[arg(long, help = "Format output as JSON")]
     pub json: bool,
 

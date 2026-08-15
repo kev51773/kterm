@@ -1,6 +1,7 @@
 import { Terminal } from '@xterm/xterm';
+import { invoke } from '@tauri-apps/api/core';
 import { tabsMap, currentWindowId } from '../state';
-import { DAEMON_URL, PROFILES } from '../config';
+import { PROFILES } from '../config';
 import { showFindBar } from '../findBar';
 import { showInputModal, escapeHtml } from './InputModal';
 import { showHighlightsModal } from './HighlightsModal';
@@ -205,7 +206,6 @@ export function showTabColorModal(options: {
   });
 }
 
-// Action callbacks registered from external handlers
 export interface ContextMenuActions {
   pasteToPane: (paneId: string) => void;
   splitPane: (targetId: string, direction: 'right' | 'left' | 'down' | 'up') => void;
@@ -246,7 +246,6 @@ export function showTerminalContextMenu(
   const detected = mouseEvent ? detectCursorTarget(term, mouseEvent) : null;
 
   if (detected) {
-    // Visually highlight detected path/URL text in terminal
     if (
       typeof detected.startCol === 'number' &&
       typeof detected.bufferY === 'number' &&
@@ -324,11 +323,7 @@ export function showTerminalContextMenu(
     document.getElementById('ctx-open-url')?.addEventListener('click', async () => {
       hideContextMenu();
       try {
-        await fetch(`${DAEMON_URL}/system/open`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target: detected.rawText }),
-        });
+        await invoke('open_target', { target: detected.rawText });
       } catch (e) {
         console.error('Failed to open URL:', e);
       }
@@ -346,11 +341,7 @@ export function showTerminalContextMenu(
     document.getElementById('ctx-open-file')?.addEventListener('click', async () => {
       hideContextMenu();
       try {
-        await fetch(`${DAEMON_URL}/system/open`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target: targetPath }),
-        });
+        await invoke('open_target', { target: targetPath });
       } catch (e) {
         console.error('Failed to open path target:', e);
       }
@@ -359,11 +350,7 @@ export function showTerminalContextMenu(
     document.getElementById('ctx-open-explorer')?.addEventListener('click', async () => {
       hideContextMenu();
       try {
-        await fetch(`${DAEMON_URL}/system/reveal`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: targetPath }),
-        });
+        await invoke('reveal_target', { path: targetPath });
       } catch (e) {
         console.error('Failed to reveal path target:', e);
       }
@@ -375,16 +362,14 @@ export function showTerminalContextMenu(
         hideContextMenu();
         const windowsCwd = toWindowsPath(targetPath);
         try {
-          const res = await fetch(`${DAEMON_URL}/tabs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+          await invoke('create_tab', {
+            payload: {
               profile: profileId,
               cwd: windowsCwd,
               window: currentWindowId,
-            }),
+            },
           });
-          if (res.ok && menuActions) {
+          if (menuActions) {
             await menuActions.syncTabs();
           }
         } catch (e) {
@@ -495,16 +480,14 @@ export function showTabHeaderContextMenu(x: number, y: number, targetTabId: stri
               currentInst.title = newTitle.trim();
             }
             if (menuActions) menuActions.renderTabBarHeaders();
-            const res = await fetch(`${DAEMON_URL}/tabs/title`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+            await invoke('set_title', {
+              payload: {
                 targets: [targetTabId],
                 title: newTitle.trim(),
                 window: currentWindowId,
-              }),
+              },
             });
-            if (res.ok && menuActions) {
+            if (menuActions) {
               await menuActions.syncTabs();
             }
           } catch (e) {
@@ -532,16 +515,14 @@ export function showTabHeaderContextMenu(x: number, y: number, targetTabId: stri
               currentInst.badge = badgeVal;
             }
             if (menuActions) menuActions.renderTabBarHeaders();
-            const res = await fetch(`${DAEMON_URL}/tabs/badge`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+            await invoke('set_badge', {
+              payload: {
                 targets: [targetTabId],
                 badge: badgeVal,
                 window: currentWindowId,
-              }),
+              },
             });
-            if (res.ok && menuActions) {
+            if (menuActions) {
               await menuActions.syncTabs();
             }
           } catch (e) {
@@ -566,16 +547,14 @@ export function showTabHeaderContextMenu(x: number, y: number, targetTabId: stri
               currentInst.color = colorVal;
             }
             if (menuActions) menuActions.renderTabBarHeaders();
-            const res = await fetch(`${DAEMON_URL}/tabs/color`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+            await invoke('set_color', {
+              payload: {
                 targets: [targetTabId],
                 color: colorVal,
                 window: currentWindowId,
-              }),
+              },
             });
-            if (res.ok && menuActions) {
+            if (menuActions) {
               await menuActions.syncTabs();
             }
           } catch (e) {

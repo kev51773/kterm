@@ -1,4 +1,5 @@
-import { renderLayoutTree, LayoutNode } from './components/SplitGrid';
+import { invoke } from '@tauri-apps/api/core';
+import { renderLayoutTree, LayoutNode, updateRatioInTree } from './components/SplitGrid';
 import {
   tabsMap,
   currentLayouts,
@@ -10,7 +11,6 @@ import {
   setLastAdjustedWasSplit,
   setUnsplitShrinkPending,
 } from './state';
-import { DAEMON_URL } from './config';
 import { getXtermCellDimensions, adjustWindowForGrid } from './terminal';
 import { syncTabs } from './daemon';
 
@@ -86,14 +86,13 @@ export function renderActiveLayout() {
       activePaneId,
       {
         onRatioChange: async (splitId, ratio) => {
+          if (activeLayoutNode) {
+            updateRatioInTree(activeLayoutNode, splitId, ratio);
+          }
           try {
-            await fetch(`${DAEMON_URL}/layout/ratio`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ split_id: splitId, ratio }),
-            });
+            await invoke('update_ratio', { splitId, ratio });
           } catch (e) {
-            console.error('Failed to update ratio', e);
+            console.error('Failed to update ratio via IPC:', e);
           }
         },
         onPaneFocus: (tabId) => {
@@ -142,15 +141,10 @@ export function renderActiveLayout() {
 
 export async function splitPane(targetId: string, direction: 'right' | 'left' | 'down' | 'up') {
   try {
-    const res = await fetch(`${DAEMON_URL}/tabs/${targetId}/split`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ direction }),
-    });
-    if (res.ok) {
-      const data = await res.json();
+    const data = await invoke<any>('split_tab', { tabId: targetId, direction });
+    if (data) {
       await syncTabs();
-      if (setFocusedPaneFn) setFocusedPaneFn(data.new_tab_id);
+      if (setFocusedPaneFn && data.new_tab_id) setFocusedPaneFn(data.new_tab_id);
     }
   } catch (e) {
     console.error('Failed to split pane', e);
@@ -159,15 +153,11 @@ export async function splitPane(targetId: string, direction: 'right' | 'left' | 
 
 export async function unsplitPane(targetId: string) {
   try {
-    const res = await fetch(`${DAEMON_URL}/tabs/${targetId}/unsplit`, {
-      method: 'POST',
-    });
-    if (res.ok) {
-      await syncTabs();
-      const instance = tabsMap.get(targetId);
-      if (instance && setFocusedPaneFn) {
-        setFocusedPaneFn(targetId);
-      }
+    await invoke('unsplit_tab', { tabId: targetId });
+    await syncTabs();
+    const instance = tabsMap.get(targetId);
+    if (instance && setFocusedPaneFn) {
+      setFocusedPaneFn(targetId);
     }
   } catch (e) {
     console.error('Failed to unsplit pane', e);

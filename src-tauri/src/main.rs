@@ -3,6 +3,8 @@ mod client;
 mod config;
 mod daemon;
 mod exporter;
+mod ipc;
+mod named_pipe;
 mod pty;
 mod yaml;
 
@@ -449,6 +451,30 @@ fn run_host_daemon(args: CliArgs) {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            ipc::list_tabs,
+            ipc::create_tab,
+            ipc::close_tabs,
+            ipc::split_tab,
+            ipc::unsplit_tab,
+            ipc::set_title,
+            ipc::set_badge,
+            ipc::set_color,
+            ipc::open_target,
+            ipc::reveal_target,
+            ipc::get_clipboard,
+            ipc::update_ratio,
+            ipc::get_window_layout,
+            ipc::get_config,
+            ipc::update_config,
+            ipc::close_window,
+            ipc::send_pty_input,
+            ipc::resize_pty,
+            ipc::attach_pty,
+            ipc::export_layout,
+            ipc::export_shortcut,
+            ipc::apply_session,
+        ])
         .setup(move |app| {
             // Pre-flight purge for win-1 on daemon setup
             let sessions = pty_manager.list_by_window(Some("win-1"));
@@ -501,9 +527,11 @@ fn run_host_daemon(args: CliArgs) {
                 window_layouts,
             };
 
+            app.manage(daemon_state.clone());
+
             let daemon_state_clone = daemon_state.clone();
             tauri::async_runtime::spawn(async move {
-                daemon::run_server("127.0.0.1:9999", daemon_state_clone).await;
+                named_pipe::start_pipe_server(daemon_state_clone).await;
             });
 
             if let Some(file_path) = apply_file {

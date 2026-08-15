@@ -1,5 +1,5 @@
 import { browser, $, $$ } from '@wdio/globals'
-import { DAEMON_BASE_URL } from './paths.js'
+import { cliOk } from './daemon.js'
 
 export async function waitForTabCount(n: number, timeout = 15000): Promise<void> {
   await browser.waitUntil(async () => (await $$('.tab-item').length) === n, { timeout })
@@ -35,7 +35,5 @@ export async function openContextMenu(selector: string, tries = 4): Promise<void
 }
 
 export async function getConfig(): Promise<any> {
-  const res = await fetch(`${DAEMON_BASE_URL}/config`)
-  if (!res.ok) throw new Error(`GET /config failed: ${res.status}`)
-  return res.json()
+  return JSON.parse(cliOk(['--get-config']))
 }

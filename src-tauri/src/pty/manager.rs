@@ -22,6 +22,7 @@ impl PtyManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_exit_callback<F>(&self, cb: F)
     where
         F: Fn(String) + Send + Sync + 'static,

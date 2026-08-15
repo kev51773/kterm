@@ -125,6 +125,7 @@ impl LayoutNode {
         self.remove_tab(target_tab_id)
     }
 
+    #[allow(dead_code)]
     pub fn update_ratio(&mut self, split_id: &str, new_ratio: f32) -> bool {
         match self {
             LayoutNode::Split { id, ratio, first, second, .. } => {

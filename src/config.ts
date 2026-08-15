@@ -1,8 +1,6 @@
+import { invoke } from '@tauri-apps/api/core';
 import { AppConfig } from './components/SettingsModal';
 import { activeAppConfig, setActiveAppConfig, tabsMap } from './state';
-
-export const DAEMON_URL = 'http://127.0.0.1:9999';
-export const WS_URL = 'ws://127.0.0.1:9999';
 
 export const PROFILES = [
   { id: 'powershell', label: 'PowerShell' },
@@ -95,13 +93,12 @@ export function applyAppConfig(config: AppConfig) {
 
 export async function loadInitialConfig() {
   try {
-    const res = await fetch(`${DAEMON_URL}/config`);
-    if (res.ok) {
-      const cfg = await res.json();
+    const cfg = await invoke<AppConfig>('get_config');
+    if (cfg) {
       applyAppConfig(cfg);
     }
   } catch (e) {
-    console.warn('Failed to load initial config from daemon', e);
+    console.warn('Failed to load initial config via IPC', e);
   }
 }
 
