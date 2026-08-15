@@ -549,3 +549,32 @@ User background/foreground overrides are applied on top of this base.
 - All `fetch()` calls are wrapped in try/catch.
 - Failed API calls log to console but don't crash the app.
 - If the daemon is unreachable, the frontend continues to retry on the next sync cycle.
+
+---
+
+## 15. Codebase Architecture & Refactor Notes
+
+### Stage 1: Backend Daemon Split
+`src-tauri/src/daemon/` structure:
+- `mod.rs`: `AppState` container, Axum router, `run_server` entry point.
+- `types.rs`: Data structures and serde request/response payloads (`TabInfo`, `WindowInfo`, `CreateTabRequest`, etc.).
+- `tabs.rs`: Tab operations (`list_tabs`, `create_tab`, `send_text`, `set_title`, `set_badge`, `set_color`, `close_tabs`, `resize_tab`, `read_tab_buffer`, `wait_tab_output`).
+- `windows.rs`: Window management (`list_windows`, `create_window`, `close_window`, `show_window`, `resize_window`).
+- `splits.rs`: Layout and split operations (`split_tab`, `unsplit_tab`, `explode_tab`, `update_layout_ratio`, `get_window_layout`).
+- `session.rs`: Session lifecycle (`auto_close_tab`, `apply_session`).
+- `export.rs`: Export endpoints (`export_layout_endpoint`, `export_shortcut_endpoint`).
+- `websocket.rs`: WebSocket upgrade and binary/text message handling (`ws_handler`, `handle_websocket`).
+- `config.rs`: Application configuration endpoints (`get_config`, `update_config`).
+- `system.rs`: System & utility endpoints (`health_check`, `get_build_id`, `shutdown_daemon`, `get_clipboard`).
+
+### Stage 2: Backend PTY Split
+`src-tauri/src/pty/` structure:
+- `session.rs`: `PtySession` struct, spawn/close/read/write methods, `ExitCallback`.
+- `platform.rs`: Win32 named-pipe helpers (`create_win32_named_pipe_handle`, `connect_win32_named_pipe`), process inspection (`is_process_alive`, `is_app_elevated`), and Windows job object assignment (`assign_pid_to_job`).
+- `elevated.rs`: UAC elevation bridge (`run_elevated_pty_bridge`).
+- `manager.rs`: `PtyManager` lifecycle coordinator and tab resolution.
+- `layout.rs`: Split layout tree structures (`LayoutNode`, `SplitDirection`).
+- `ring_buffer.rs`: ANSI-aware PTY output ring buffer.
+- `mod.rs`: Re-exports and submodule declarations.
+
+
