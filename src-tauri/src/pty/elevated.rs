@@ -9,6 +9,11 @@ pub fn run_elevated_pty_bridge(id: &str, profile: &str) {
     let parts: Vec<&str> = id.split(':').collect();
     let pipe_id = if parts.len() == 2 { parts[1] } else { id };
 
+    // Validate pipe_id to prevent named pipe path traversal or injection
+    if !pipe_id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return;
+    }
+
     let pipe_in_path = format!("\\\\.\\pipe\\kterm_pipe_in_{}", pipe_id);
     let pipe_out_path = format!("\\\\.\\pipe\\kterm_pipe_out_{}", pipe_id);
 

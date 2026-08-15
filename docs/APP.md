@@ -594,5 +594,11 @@ User background/foreground overrides are applied on top of this base.
 - `components/TabBar.ts`: Tab strip scroll controls, overflow detector, window maximize trigger.
 - `main.ts`: Main entry point wiring module initialization, global keyboard shortcuts, window controls, and Tauri event handlers.
 
+### Stage 4: Security & Polish
+- **Elevated Spawn Surface**: Validated `pipe_id` in `elevated.rs` to enforce alphanumeric/hyphen/underscore naming, eliminating named pipe path traversal/injection risks.
+- **WebSocket IPC Clamping**: Enforced parameter boundary clamping on incoming WebSocket `resize` events (`cols` 1–1000, `rows` 1–500) in `daemon/websocket.rs`.
+- **Dead-Code & Type Safety**: Cleaned unused imports, typecheck (`tsc --noEmit`) 100% green, cargo tests 111/111 passing.
+
+
 
 

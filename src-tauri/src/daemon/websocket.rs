@@ -54,7 +54,9 @@ pub async fn handle_websocket(socket: WebSocket, session: Arc<crate::pty::PtySes
                 if text.starts_with('{') && text.contains("\"resize\"") {
                     if let Ok(resize_msg) = serde_json::from_str::<WsResizeMsg>(&text) {
                         if resize_msg.r#type == "resize" {
-                            session_clone.resize(resize_msg.rows, resize_msg.cols);
+                            let cols = resize_msg.cols.clamp(1, 1000);
+                            let rows = resize_msg.rows.clamp(1, 500);
+                            session_clone.resize(rows, cols);
                             continue;
                         }
                     }
