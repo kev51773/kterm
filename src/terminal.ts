@@ -237,7 +237,7 @@ export function createTabLocal(tabData: TabData) {
     e.preventDefault();
     e.stopPropagation();
     if (callbacks) callbacks.setFocusedPane(id);
-    showTerminalContextMenu(e.clientX, e.clientY, term, id);
+    showTerminalContextMenu(e.clientX, e.clientY, term, id, e);
   });
 
   const instance: PaneInstance = {

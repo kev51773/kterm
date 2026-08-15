@@ -52,6 +52,7 @@ import {
 } from './tabs';
 import {
   contextMenuEl,
+  hideContextMenu,
   registerContextMenuActions,
 } from './components/ContextMenu';
 import {
@@ -230,7 +231,7 @@ document.body.appendChild(profileDropdownEl);
 window.addEventListener('click', (e) => {
   const target = e.target as Node;
   if (contextMenuEl.contains(target) || profileDropdownEl.contains(target) || profileSubMenuEl.contains(target)) return;
-  contextMenuEl.style.display = 'none';
+  hideContextMenu();
   profileDropdownEl.style.display = 'none';
   closeProfileSubMenu();
 });

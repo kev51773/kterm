@@ -111,6 +111,8 @@ pub async fn run_server(addr_str: &str, state: AppState) {
         .route("/build_id", get(get_build_id))
         .route("/shutdown", post(shutdown_daemon))
         .route("/clipboard", get(get_clipboard))
+        .route("/system/open", post(open_target))
+        .route("/system/reveal", post(reveal_target))
         .layer(cors)
         .with_state(state);
 

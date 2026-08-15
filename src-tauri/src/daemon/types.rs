@@ -22,6 +22,17 @@ pub struct CreateTabRequest {
     pub rows: Option<u16>,
     pub admin: Option<bool>,
     pub elevated: Option<bool>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct OpenTargetRequest {
+    pub target: String,
+}
+
+#[derive(Deserialize)]
+pub struct RevealTargetRequest {
+    pub path: String,
 }
 
 #[derive(Deserialize)]

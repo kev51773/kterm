@@ -62,10 +62,15 @@ pub async fn create_tab(
         .and_then(|p| p.admin.or(p.elevated))
         .unwrap_or(false);
 
+    let cwd = payload
+        .as_ref()
+        .and_then(|p| p.cwd.clone())
+        .filter(|c| !c.trim().is_empty());
+
     let tab_id = state.pty_manager.generate_next_tab_id_for_window(&window_id);
     let session = state
         .pty_manager
-        .spawn_with_size_and_cwd(tab_id.clone(), profile.clone(), window_id.clone(), cols, rows, None, elevated)
+        .spawn_with_size_and_cwd(tab_id.clone(), profile.clone(), window_id.clone(), cols, rows, cwd.as_deref(), elevated)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let title = session.title.lock().unwrap().clone();

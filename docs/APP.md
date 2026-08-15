@@ -272,10 +272,33 @@ Opened from the terminal context menu → "Highlights..."
 
 ## 8. Context Menus
 
-### 8.1 Terminal Pane Context Menu (Right-click on terminal)
+### 8.1 Intelligent Path & URL Detection
+
+Right-clicking inside any terminal pane inspects text under the mouse cursor (or active selection), stripping line/column specifiers (e.g. `:123:45`, `(42)`) and shell prompt prefixes (e.g. `user@host:path$`).
+
+While the context menu is open, the detected path/URL string is **visually highlighted** in the terminal pane. Closing the menu clears the preview selection.
+
+When a target is detected, context-sensitive actions are dynamically prepended to the menu:
+
+- **URLs** (`http://`, `https://`, `localhost`, etc.):
+  - `🌐 Open in Default Browser`: Launches URL via system default browser handler.
+  - `📋 Copy URL`: Copies clean URL string to clipboard.
+
+- **File Paths**:
+  - `📄 Open`: Opens file target using system default application.
+  - `📁 Open in Explorer`: Opens Windows Explorer with file selected (`explorer.exe /select,path`).
+  - `💻 New Shell Here ▶`: Submenu listing profiles (`PowerShell`, `Command Prompt`, `WSL`, `Git Bash`). Automatically converts directory paths (`--cd` for WSL, `CHERE_INVOKING=1` for Git Bash) and initializes new shell tab at target CWD.
+  - `📋 Copy Path ▶`: Submenu with path format options (`Original`, `Windows`, `Git Bash`, `WSL`).
+
+- **Directory Paths**:
+  - Omits `📄 Open` (since folders open directly via Explorer).
+  - Shows `📁 Open in Explorer`, `💻 New Shell Here ▶`, and `📋 Copy Path ▶`.
+
+### 8.2 Terminal Pane Context Menu (Right-click on terminal)
 
 | Option | Shortcut | Action |
 |--------|----------|--------|
+| *(Detected URL/Path Actions)* | — | Dynamic context-sensitive items (see 8.1). |
 | Copy | `Ctrl+Shift+C` | Copy selection to clipboard. |
 | Paste | `Ctrl+Shift+V` | Paste from clipboard. |
 | Find | `Ctrl+Shift+F` | Open find bar. |
@@ -288,12 +311,12 @@ Opened from the terminal context menu → "Highlights..."
 | Highlights... | — | Open highlights modal. |
 | Export buffer | — | Save terminal content to `.txt` file. |
 
-### 8.2 Context Menu Positioning
+### 8.3 Context Menu Positioning
 
 - Menus are positioned at the mouse click coordinates.
 - Auto-repositioned if they would overflow the window.
 - The "open-left" class is applied when the menu would overflow the right edge (for submenus).
-- Clicking outside any context menu closes it.
+- Clicking outside any context menu closes it and clears preview text highlighting.
 
 ---
 

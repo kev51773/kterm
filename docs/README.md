@@ -17,6 +17,7 @@ It behaves like Windows Terminal with modern tabs, split panes, dark theme styli
 - 📝 **Tail-Argument Text Injection**: Pass raw commands directly with `--send-text` without complex shell escaping.
 - ⏱️ **Synchronization & Buffer Reading**: Read screen output (`--read-text`) or block scripts until text appears (`--wait-for`).
 - 💾 **Script Export Engine**: Export current live window/tab/split layouts into executable `.ps1`, `.bat`, or `.sh` scripts (`--export-script`).
+- 🎯 **Intelligent Path & URL Detection**: Right-click context menus automatically detect file paths (Windows, Git Bash, WSL, POSIX, relative) and URLs with live visual text highlighting, offering instant opening, Explorer navigation, shell spawning at target directory, and format conversion.
 
 ---
 

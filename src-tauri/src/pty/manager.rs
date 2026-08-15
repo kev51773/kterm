@@ -201,13 +201,23 @@ impl PtyManager {
                     c.arg("/K");
                     c
                 }
-                "wsl" => CommandBuilder::new("wsl.exe"),
+                "wsl" => {
+                    let mut c = CommandBuilder::new("wsl.exe");
+                    if let Some(dir) = cwd {
+                        if !dir.trim().is_empty() {
+                            c.arg("--cd");
+                            c.arg(dir);
+                        }
+                    }
+                    c
+                }
                 "git-bash" | "bash" => {
                     let mut c = CommandBuilder::new(&bash_path);
                     c.arg("--login");
                     c.arg("-i");
                     c.env("TERM", "xterm-256color");
                     c.env("MSYSTEM", "MINGW64");
+                    c.env("CHERE_INVOKING", "1");
                     c
                 }
                 _ => {

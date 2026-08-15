@@ -1,9 +1,10 @@
 import { Terminal } from '@xterm/xterm';
 import { tabsMap, currentWindowId } from '../state';
-import { DAEMON_URL } from '../config';
+import { DAEMON_URL, PROFILES } from '../config';
 import { showFindBar } from '../findBar';
 import { showInputModal, escapeHtml } from './InputModal';
 import { showHighlightsModal } from './HighlightsModal';
+import { detectCursorTarget, toWindowsPath } from '../utils/detector';
 
 export const contextMenuEl = document.createElement('div');
 contextMenuEl.className = 'context-menu';
@@ -221,8 +222,81 @@ export function registerContextMenuActions(actions: ContextMenuActions) {
   menuActions = actions;
 }
 
-export function showTerminalContextMenu(x: number, y: number, term: Terminal, targetPaneId: string) {
+let activeHighlightTerm: Terminal | null = null;
+let temporaryHighlightActive = false;
+
+export function hideContextMenu() {
+  contextMenuEl.style.display = 'none';
+  if (temporaryHighlightActive && activeHighlightTerm) {
+    activeHighlightTerm.clearSelection();
+    temporaryHighlightActive = false;
+    activeHighlightTerm = null;
+  }
+}
+
+export function showTerminalContextMenu(
+  x: number,
+  y: number,
+  term: Terminal,
+  targetPaneId: string,
+  mouseEvent?: MouseEvent
+) {
+  hideContextMenu();
+  let contextItemsHtml = '';
+  const detected = mouseEvent ? detectCursorTarget(term, mouseEvent) : null;
+
+  if (detected) {
+    // Visually highlight detected path/URL text in terminal
+    if (
+      typeof detected.startCol === 'number' &&
+      typeof detected.bufferY === 'number' &&
+      typeof detected.length === 'number'
+    ) {
+      term.select(detected.startCol, detected.bufferY, detected.length);
+      activeHighlightTerm = term;
+      temporaryHighlightActive = true;
+    }
+
+    if (detected.type === 'url') {
+      contextItemsHtml += `
+        <div class="context-menu-item" id="ctx-open-url">🌐 Open in Default Browser</div>
+        <div class="context-menu-item" id="ctx-copy-url">📋 Copy URL</div>
+        <div class="context-menu-divider"></div>
+      `;
+    } else if (detected.type === 'file' || detected.type === 'directory') {
+      const shellSubmenuHtml = PROFILES.map(
+        (p) => `<div class="context-menu-item ctx-shell-profile-item" data-profile="${p.id}">${escapeHtml(p.label)}</div>`
+      ).join('');
+
+      const isFolder = detected.type === 'directory';
+
+      contextItemsHtml += `
+        ${!isFolder ? '<div class="context-menu-item" id="ctx-open-file">📄 Open</div>' : ''}
+        <div class="context-menu-item" id="ctx-open-explorer">📁 Open in Explorer</div>
+        <div class="context-menu-item has-submenu" id="ctx-new-shell-menu">
+          <span>💻 New Shell Here</span>
+          <span class="context-menu-shortcut">▶</span>
+          <div class="context-submenu">
+            ${shellSubmenuHtml}
+          </div>
+        </div>
+        <div class="context-menu-item has-submenu" id="ctx-copy-path-menu">
+          <span>📋 Copy Path</span>
+          <span class="context-menu-shortcut">▶</span>
+          <div class="context-submenu">
+            <div class="context-menu-item" id="ctx-copy-path-orig">Original</div>
+            <div class="context-menu-item" id="ctx-copy-path-win">Windows (C:\\...)</div>
+            <div class="context-menu-item" id="ctx-copy-path-gitbash">Git Bash (/c/...)</div>
+            <div class="context-menu-item" id="ctx-copy-path-wsl">WSL (/mnt/c/...)</div>
+          </div>
+        </div>
+        <div class="context-menu-divider"></div>
+      `;
+    }
+  }
+
   contextMenuEl.innerHTML = `
+    ${contextItemsHtml}
     <div class="context-menu-item" id="ctx-copy">Copy <span class="context-menu-shortcut">Ctrl+Shift+C</span></div>
     <div class="context-menu-item" id="ctx-paste">Paste <span class="context-menu-shortcut">Ctrl+Shift+V</span></div>
     <div class="context-menu-item" id="ctx-find">Find <span class="context-menu-shortcut">Ctrl+Shift+F</span></div>
@@ -246,57 +320,151 @@ export function showTerminalContextMenu(x: number, y: number, term: Terminal, ta
 
   positionContextMenu(x, y);
 
+  if (detected && detected.type === 'url') {
+    document.getElementById('ctx-open-url')?.addEventListener('click', async () => {
+      hideContextMenu();
+      try {
+        await fetch(`${DAEMON_URL}/system/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: detected.rawText }),
+        });
+      } catch (e) {
+        console.error('Failed to open URL:', e);
+      }
+    });
+
+    document.getElementById('ctx-copy-url')?.addEventListener('click', () => {
+      navigator.clipboard.writeText(detected.rawText);
+      hideContextMenu();
+    });
+  }
+
+  if (detected && (detected.type === 'file' || detected.type === 'directory')) {
+    const targetPath = detected.windowsPath || detected.cleanedPath || detected.rawText;
+
+    document.getElementById('ctx-open-file')?.addEventListener('click', async () => {
+      hideContextMenu();
+      try {
+        await fetch(`${DAEMON_URL}/system/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: targetPath }),
+        });
+      } catch (e) {
+        console.error('Failed to open path target:', e);
+      }
+    });
+
+    document.getElementById('ctx-open-explorer')?.addEventListener('click', async () => {
+      hideContextMenu();
+      try {
+        await fetch(`${DAEMON_URL}/system/reveal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetPath }),
+        });
+      } catch (e) {
+        console.error('Failed to reveal path target:', e);
+      }
+    });
+
+    contextMenuEl.querySelectorAll<HTMLElement>('.ctx-shell-profile-item').forEach((item) => {
+      item.addEventListener('click', async () => {
+        const profileId = item.getAttribute('data-profile') || 'powershell';
+        hideContextMenu();
+        const windowsCwd = toWindowsPath(targetPath);
+        try {
+          const res = await fetch(`${DAEMON_URL}/tabs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profile: profileId,
+              cwd: windowsCwd,
+              window: currentWindowId,
+            }),
+          });
+          if (res.ok && menuActions) {
+            await menuActions.syncTabs();
+          }
+        } catch (e) {
+          console.error('Failed to spawn new shell at cwd:', e);
+        }
+      });
+    });
+
+    document.getElementById('ctx-copy-path-orig')?.addEventListener('click', () => {
+      navigator.clipboard.writeText(detected.cleanedPath || detected.rawText);
+      hideContextMenu();
+    });
+
+    document.getElementById('ctx-copy-path-win')?.addEventListener('click', () => {
+      if (detected.windowsPath) navigator.clipboard.writeText(detected.windowsPath);
+      hideContextMenu();
+    });
+
+    document.getElementById('ctx-copy-path-gitbash')?.addEventListener('click', () => {
+      if (detected.gitBashPath) navigator.clipboard.writeText(detected.gitBashPath);
+      hideContextMenu();
+    });
+
+    document.getElementById('ctx-copy-path-wsl')?.addEventListener('click', () => {
+      if (detected.wslPath) navigator.clipboard.writeText(detected.wslPath);
+      hideContextMenu();
+    });
+  }
+
   document.getElementById('ctx-copy')?.addEventListener('click', () => {
     if (term.hasSelection()) {
       navigator.clipboard.writeText(term.getSelection());
     }
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
     term.focus();
   });
 
   document.getElementById('ctx-paste')?.addEventListener('click', () => {
     if (menuActions) menuActions.pasteToPane(targetPaneId);
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-find')?.addEventListener('click', () => {
     showFindBar(term, targetPaneId);
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-split-right')?.addEventListener('click', () => {
     if (menuActions) menuActions.splitPane(targetPaneId, 'right');
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-split-left')?.addEventListener('click', () => {
     if (menuActions) menuActions.splitPane(targetPaneId, 'left');
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-split-down')?.addEventListener('click', () => {
     if (menuActions) menuActions.splitPane(targetPaneId, 'down');
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-split-up')?.addEventListener('click', () => {
     if (menuActions) menuActions.splitPane(targetPaneId, 'up');
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-unsplit')?.addEventListener('click', () => {
     if (menuActions) menuActions.unsplitPane(targetPaneId);
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-highlights')?.addEventListener('click', () => {
     showHighlightsModal(term, targetPaneId);
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 
   document.getElementById('ctx-export-buffer')?.addEventListener('click', () => {
     if (menuActions) menuActions.exportPaneBuffer(term, targetPaneId);
-    contextMenuEl.style.display = 'none';
+    hideContextMenu();
   });
 }
 
