@@ -66,6 +66,7 @@ export function applyAppConfig(config: AppConfig) {
   for (const instance of tabsMap.values()) {
     instance.term.options.fontFamily = config.font.family;
     instance.term.options.fontSize = config.font.size;
+    instance.term.options.cursorStyle = 'bar';
     instance.term.options.drawBoldTextInBrightColors = true;
     instance.term.options.minimumContrastRatio = 1.2;
     instance.term.options.theme = {

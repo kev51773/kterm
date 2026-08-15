@@ -797,6 +797,12 @@ html, body {
   background: var(--highlight-color, #61afef);
 }
 
+.xterm,
+.xterm .xterm-screen,
+.xterm .xterm-viewport {
+  cursor: default !important;
+}
+
 .xterm .xterm-viewport {
   overflow-y: auto !important;
 }

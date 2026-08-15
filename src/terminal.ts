@@ -55,6 +55,7 @@ export function createTabLocal(tabData: TabData) {
   const term = new Terminal({
     allowProposedApi: true,
     cursorBlink: true,
+    cursorStyle: 'bar',
     drawBoldTextInBrightColors: true,
     minimumContrastRatio: 1.2,
     fontFamily: activeAppConfig.font.family,
