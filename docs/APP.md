@@ -577,4 +577,22 @@ User background/foreground overrides are applied on top of this base.
 - `ring_buffer.rs`: ANSI-aware PTY output ring buffer.
 - `mod.rs`: Re-exports and submodule declarations.
 
+### Stage 3: Frontend Extraction & Hardening
+`src/` structure:
+- `state.ts`: Window/tab/pane state store, type definitions (`TabData`, `PaneInstance`, `TabInstance`), state getters/setters, and fit flags.
+- `config.ts`: Config loading/application, theme application (`applyAppConfig`), grid dimension calculations.
+- `daemon.ts`: Daemon connection initialization, tab/layout state sync (`syncTabs`), WebSocket stream handler.
+- `terminal.ts`: xterm.js instance lifecycle per pane (`createTabLocal`, `removeTabLocal`), window sizing (`adjustWindowForGrid`), clipboard paste.
+- `tabs.ts`: Tab model, tab header rendering (`renderTabBarHeaders`), tab focus, tab switching/cycling, tab spawn handlers.
+- `splits.ts`: Layout tree queries (`containsTab`, `getTabIdsInNode`), split pane rendering (`renderActiveLayout`), split/unsplit commands.
+- `findBar.ts`: Search find-bar UI (`showFindBar`, `closeFindBar`), match count tracking, terminal buffer text extraction.
+- `highlights.ts`: Word highlighting overlay and flashing interval animation (`updatePaneHighlights`).
+- `components/InputModal.ts`: Modal component for text/rename inputs.
+- `components/HighlightsModal.ts`: Modal component for managing pane highlight terms.
+- `components/ContextMenu.ts`: Terminal pane and tab header context menus (`showTerminalContextMenu`, `showTabHeaderContextMenu`).
+- `components/ProfileDropdown.ts`: Profile switcher and administrator execution menu.
+- `components/TabBar.ts`: Tab strip scroll controls, overflow detector, window maximize trigger.
+- `main.ts`: Main entry point wiring module initialization, global keyboard shortcuts, window controls, and Tauri event handlers.
+
+
 

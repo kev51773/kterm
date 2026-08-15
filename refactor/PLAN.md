@@ -121,5 +121,7 @@ Final mini-stage — hardening (no new features):
 - [x] 2026-08-15 — Plan reevaluated: reordered (backend first), stage 4.5 dropped (autotest is the E2E system), gate facts corrected to 87 tests + `docs/APP.md`. No stages executed.
 - [x] 2026-08-15 — Stage 1 executed: Split `src-tauri/src/daemon/mod.rs` into `types.rs`, `tabs.rs`, `windows.rs`, `splits.rs`, `session.rs`, `export.rs`, `websocket.rs`, `config.rs`, `system.rs`. 87/87 binary unit tests (111/111 total cargo tests) green, release binary built, `docs/APP.md` updated.
 - [x] 2026-08-15 — Stage 2 executed: Split `src-tauri/src/pty/manager.rs` into `pty/session.rs`, `pty/platform.rs`, `pty/elevated.rs`. 87/87 binary unit tests (111/111 total cargo tests) green, release binary built, `docs/APP.md` updated.
+- [x] 2026-08-15 — Stage 3 executed: Extracted `src/main.ts` into modular components (`state.ts`, `config.ts`, `daemon.ts`, `terminal.ts`, `tabs.ts`, `splits.ts`, `findBar.ts`, `highlights.ts`, `components/InputModal.ts`, `components/HighlightsModal.ts`, `components/ContextMenu.ts`, `components/ProfileDropdown.ts`, `components/TabBar.ts`). Typed `PaneInstance` introduced, TypeScript typecheck passed cleanly, 111/111 cargo tests green, `docs/APP.md` updated.
+
 
 
