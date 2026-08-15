@@ -181,18 +181,25 @@ $w1_t3 = & kterm.exe --select-tab $w1_t2 --split-down --profile wsl
 
 | Method | Endpoint | Description | Body / Query Payload |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/windows` | List windows & layouts | `N/A` |
-| `GET` | `/tabs` | List tabs | `?window=win-1&profile=git-bash` |
-| `POST` | `/tabs` | Spawn tab | `{"window_id": "win-1", "profile": "powershell", "new_window": false}` |
-| `POST` | `/tabs/send` | Write text to 1+ tabs | `{"target": ["tab-101", "Production Server"], "text": "dir\r"}` |
-| `PATCH` | `/tabs/metadata` | Update title/badge/color | `{"target": ["tab-101"], "title": "...", "badge": "PROD", "color": "#ff0000"}` |
-| `POST` | `/tabs/:id/split` | Split pane | `{"direction": "right", "profile": "git-bash", "move_tab_id": null}` |
-| `POST` | `/tabs/:id/unsplit` | Detach pane to tab | `{"explode": false}` |
+| `GET` | `/health` | Daemon health check | `N/A` |
+| `GET` | `/windows` | List active windows | `N/A` |
+| `GET` | `/layout` | Get window layout tree | `?window=win-1` |
+| `POST` | `/layout/ratio` | Update split ratio | `{"split_id": "...", "ratio": 0.5}` |
+| `GET` | `/tabs` | List active tabs | `?window=win-1` |
+| `POST` | `/tabs` | Spawn tab | `{"profile": "powershell", "window": "win-1", "cols": 120, "rows": 30, "elevated": false}` |
+| `POST` | `/tabs/send` | Write text to 1+ tabs | `{"targets": ["tab-101"], "text": "dir\r", "window": "win-1"}` |
+| `POST` | `/tabs/title` | Set tab title | `{"targets": ["tab-101"], "title": "New Title", "window": "win-1"}` |
+| `POST` | `/tabs/badge` | Set tab badge | `{"targets": ["tab-101"], "badge": "PROD", "window": "win-1"}` |
+| `POST` | `/tabs/color` | Set tab color accent | `{"targets": ["tab-101"], "color": "#1e88e5", "window": "win-1"}` |
+| `POST` | `/tabs/close` | Close 1+ tabs | `{"targets": ["tab-101"], "window": "win-1"}` |
+| `POST` | `/tabs/:id/split` | Split pane | `{"direction": "right"}` |
+| `POST` | `/tabs/:id/unsplit` | Un-split pane | `N/A` |
 | `GET` | `/tabs/:id/read` | Read screen buffer | `?tail=50` |
 | `POST` | `/tabs/:id/wait` | Wait for text pattern | `{"pattern": "Build Succeeded", "timeout_sec": 30}` |
-| `POST` | `/tabs/:id/close` | Close tab | `{"force": false}` |
-| `GET` | `/export-script` | Export script | `?format=ps1` |
-| `GET` | `/tabs/:id/ws` | PTY WebSocket | Bi-directional PTY I/O stream |
+| `GET` | `/export-layout` | Export window layout YAML | `?window=win-1` |
+| `POST` | `/export-shortcut` | Create launcher shortcut | `{"path": "..."}` |
+| `GET` / `POST` | `/config` | Get or update app config | `AppConfig` JSON |
+| `GET` | `/tabs/:id/ws` | PTY WebSocket | Bi-directional PTY I/O stream (`?window=win-1`) |
 
 ---
 
@@ -200,13 +207,17 @@ $w1_t3 = & kterm.exe --select-tab $w1_t2 --split-down --profile wsl
 
 | Keybinding | Action |
 | :--- | :--- |
-| `Ctrl+Shift+T` | Spawn New Tab (Default Profile) |
-| `Ctrl+Shift+Del` | Close / Un-split Active Pane |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle Next / Previous Tab |
-| `Ctrl+Shift+Right` | Split Right |
-| `Ctrl+Shift+Left` | Split Left |
-| `Ctrl+Shift+Down` | Split Down |
-| `Ctrl+Shift+Up` | Split Up |
-| `Ctrl+Shift+1..9` | Switch to Tab N |
+| `Ctrl+Shift++` | Spawn New Tab (Default Profile) |
+| `Ctrl+Shift+-` | Close Active Tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle Next / Previous Tab Group |
+| `Ctrl+Shift+1..9` | Switch to Tab Group N |
+| `Ctrl+Shift+Right` / `Alt+Shift+Right` | Split Right |
+| `Ctrl+Shift+Left` / `Alt+Shift+Left` | Split Left |
+| `Ctrl+Shift+Down` / `Alt+Shift+Down` | Split Down |
+| `Ctrl+Shift+Up` / `Alt+Shift+Up` | Split Up |
+| `Ctrl+Shift+Delete` / `Ctrl+Shift+W` | Un-split Active Pane |
+| `Ctrl+F` | Open Terminal Find Bar |
+| `Ctrl+,` | Open Settings Modal |
+
 
 
