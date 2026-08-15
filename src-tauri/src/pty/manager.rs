@@ -690,8 +690,6 @@ pub fn connect_win32_named_pipe(handle: *mut std::ffi::c_void) -> Result<std::fs
             _child: child_arc,
         });
 
-        session.resize(30, 100);
-
         let map_key = format!("{}:{}", window_id, id);
         self.sessions.lock().unwrap().insert(map_key, session.clone());
         Ok(session)

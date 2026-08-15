@@ -1082,8 +1082,19 @@ function connectWebSocket(instance: TabInstance) {
   ws.onopen = () => {
     const cols = activeAppConfig.default_cols || 120;
     const rows = activeAppConfig.default_rows || 30;
-    instance.term.resize(cols, rows);
-    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    // The pane may not be in the DOM yet (createTabLocal runs before
+    // renderActiveLayout appends it). Resizing a detached terminal updates
+    // xterm's internal grid but not its DOM rows, leaving stale overflow that
+    // renders as a phantom scrollbar. Defer until the pane is connected.
+    const doResize = () => {
+      if (instance.element.isConnected) {
+        instance.term.resize(cols, rows);
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+      } else {
+        requestAnimationFrame(doResize);
+      }
+    };
+    doResize();
   };
 
   instance.term.onResize(({ cols, rows }) => {
