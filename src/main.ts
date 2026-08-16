@@ -3,6 +3,7 @@ import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { SettingsModal } from './components/SettingsModal';
+import { RemoteAccessModal } from './components/RemoteAccessModal';
 import {
   tabsMap,
   currentWindowId,
@@ -106,6 +107,7 @@ registerContextMenuActions({
 registerProfileDropdownActions({
   spawnTabWithProfile,
   triggerExportSave,
+  openRemoteAccessModal: () => new RemoteAccessModal().open(),
   openSettingsModal: () => settingsModal.open(),
 });
 

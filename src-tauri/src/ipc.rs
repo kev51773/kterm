@@ -204,13 +204,35 @@ pub fn update_ratio(
 #[tauri::command]
 pub fn get_window_layout(state: State<'_, AppState>, window: Option<String>) -> Vec<LayoutNode> {
     let win_id = window.unwrap_or_else(|| "win-1".to_string());
-    state
-        .window_layouts
-        .lock()
-        .unwrap()
-        .get(&win_id)
-        .cloned()
-        .unwrap_or_default()
+    let mut layouts_guard = state.window_layouts.lock().unwrap();
+    if let Some(nodes) = layouts_guard.get_mut(&win_id) {
+        let active_tabs: std::collections::HashSet<String> = state
+            .pty_manager
+            .list_by_window(Some(&win_id))
+            .into_iter()
+            .map(|s| s.id.clone())
+            .collect();
+
+        let mut remove_indices = Vec::new();
+        for (idx, node) in nodes.iter_mut().enumerate() {
+            let node_tabs = node.collect_tabs();
+            for tid in node_tabs {
+                if !active_tabs.contains(&tid) {
+                    if matches!(node, LayoutNode::Pane { ref tab_id } if tab_id == &tid) {
+                        remove_indices.push(idx);
+                    } else if node.contains_tab(&tid) {
+                        node.remove_tab(&tid);
+                    }
+                }
+            }
+        }
+        for idx in remove_indices.into_iter().rev() {
+            nodes.remove(idx);
+        }
+        nodes.clone()
+    } else {
+        Vec::new()
+    }
 }
 
 #[tauri::command]

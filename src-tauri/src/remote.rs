@@ -18,6 +18,7 @@ use tokio::sync::oneshot;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::daemon::{AppState, TabInfo, WsResizeMsg};
+use crate::pty::LayoutNode;
 
 pub static MOBILE_KEYBOARD_JS: &str = include_str!("../../web/mobile-keyboard.js");
 pub static INDEX_HTML: &str = include_str!("../../web/index.html");
@@ -253,12 +254,20 @@ async fn handle_create_tab(
     }
 
     let window_id = "win-1".to_string();
-    let profile = "powershell".to_string();
+    let profile = query.get("profile").cloned().unwrap_or_else(|| "powershell".to_string());
     let tab_id = app_state.pty_manager.generate_next_tab_id_for_window(&window_id);
     let session = app_state
         .pty_manager
-        .spawn_with_size_and_cwd(tab_id, profile, window_id, 120, 30, None, false)
+        .spawn_with_size_and_cwd(tab_id, profile, window_id.clone(), 120, 30, None, false)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    {
+        let mut layouts = app_state.window_layouts.lock().unwrap();
+        let win_layouts = layouts.entry(window_id.clone()).or_insert_with(Vec::new);
+        win_layouts.push(LayoutNode::Pane {
+            tab_id: session.id.clone(),
+        });
+    }
 
     let title = session.title.lock().unwrap().clone();
     let badge = session.badge.lock().unwrap().clone();

@@ -532,6 +532,11 @@ fn run_host_daemon(args: CliArgs) {
                 window_layouts,
             };
 
+            let daemon_state_exit = daemon_state.clone();
+            daemon_state.pty_manager.set_exit_callback(move |tab_id| {
+                daemon::auto_close_tab(&daemon_state_exit, &tab_id);
+            });
+
             app.manage(daemon_state.clone());
 
             let daemon_state_clone = daemon_state.clone();

@@ -59,6 +59,59 @@
     .shell-card-badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #21262d; color: #8b949e; font-weight: normal; }
     .shell-card-sub { font-size: 12px; color: #8b949e; }
 
+    /* Modal Shell Picker Overlay */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 100;
+    }
+    .picker-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 16px;
+      width: 100%;
+      max-width: 320px;
+    }
+    .picker-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-weight: 600;
+      color: #f0f6fc;
+      font-size: 15px;
+    }
+    .picker-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .profile-opt-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 10px 12px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #58a6ff;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+    }
+    .profile-opt-btn:active {
+      background: #30363d;
+      border-color: #58a6ff;
+    }
+    .profile-opt-title { font-weight: 600; font-size: 14px; color: #58a6ff; }
+    .profile-opt-sub { font-size: 11px; color: #8b949e; margin-top: 2px; }
+
     /* Terminal Screen */
     #screen-term {
       position: fixed;
@@ -115,6 +168,34 @@
       </div>
     </div>
     <div id="shell-container" class="shell-list"></div>
+  </div>
+
+  <!-- SHELL PICKER MODAL -->
+  <div id="modal-shell-picker" class="modal-overlay" style="display:none;">
+    <div class="picker-card">
+      <div class="picker-header">
+        <span>Select Shell Type</span>
+        <button id="btn-close-picker" class="btn-sm">&times;</button>
+      </div>
+      <div class="picker-body">
+        <button class="profile-opt-btn" data-profile="powershell">
+          <span class="profile-opt-title">⚡ PowerShell</span>
+          <span class="profile-opt-sub">Windows PowerShell</span>
+        </button>
+        <button class="profile-opt-btn" data-profile="cmd">
+          <span class="profile-opt-title">💻 Command Prompt</span>
+          <span class="profile-opt-sub">cmd.exe</span>
+        </button>
+        <button class="profile-opt-btn" data-profile="wsl">
+          <span class="profile-opt-title">🐧 WSL / Linux</span>
+          <span class="profile-opt-sub">Windows Subsystem for Linux</span>
+        </button>
+        <button class="profile-opt-btn" data-profile="git-bash">
+          <span class="profile-opt-title">🐚 Git Bash</span>
+          <span class="profile-opt-sub">Bash for Windows</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- 3. TERMINAL SCREEN -->
@@ -209,10 +290,26 @@
     });
 
     document.getElementById('btn-refresh').addEventListener('click', loadShells);
-    document.getElementById('btn-new-shell').addEventListener('click', createNewShell);
 
-    function createNewShell() {
-      fetch('/api/tabs/new?token=' + encodeURIComponent(token) + '&_t=' + Date.now(), {
+    var pickerModal = document.getElementById('modal-shell-picker');
+    document.getElementById('btn-new-shell').addEventListener('click', function() {
+      pickerModal.style.display = 'flex';
+    });
+    document.getElementById('btn-close-picker').addEventListener('click', function() {
+      pickerModal.style.display = 'none';
+    });
+
+    document.querySelectorAll('.profile-opt-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var profile = btn.getAttribute('data-profile') || 'powershell';
+        pickerModal.style.display = 'none';
+        createNewShell(profile);
+      });
+    });
+
+    function createNewShell(profile) {
+      profile = profile || 'powershell';
+      fetch('/api/tabs/new?token=' + encodeURIComponent(token) + '&profile=' + encodeURIComponent(profile) + '&_t=' + Date.now(), {
         method: 'POST',
         headers: { 'Cache-Control': 'no-cache' }
       })
@@ -255,7 +352,7 @@
         if (!tabs) return;
         container.innerHTML = '';
         if (tabs.length === 0) {
-          container.innerHTML = '<div style="color:#8b949e; text-align:center; padding:20px;">No active shells found on desktop.<br><br><button onclick="createNewShell()" style="padding:8px 16px; background:#238636; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">+ Create New Shell</button></div>';
+          container.innerHTML = '<div style="color:#8b949e; text-align:center; padding:20px;">No active shells found on desktop.<br><br><button onclick="pickerModal.style.display=\'flex\'" style="padding:8px 16px; background:#238636; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">+ Create New Shell</button></div>';
           return;
         }
         tabs.forEach(function(tab) {
@@ -361,7 +458,12 @@
       };
 
       ws.onclose = function() {
-        term.write('\r\n\x1b[31m[Disconnected from server]\x1b[0m\r\n');
+        term.write('\r\n\x1b[31m[Process exited / Disconnected]\x1b[0m\r\n');
+        setTimeout(function() {
+          if (activeTabId === tab.id) {
+            loadShells();
+          }
+        }, 1000);
       };
 
       term.onData(function(data) {

@@ -6,15 +6,15 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use tauri::Manager;
 
 pub fn auto_close_tab(state: &AppState, tab_id: &str) {
-    if let Some(sess) = state.pty_manager.get(tab_id) {
-        let window_id = sess.window_id.clone();
-        state.pty_manager.close(tab_id);
+    let target_win_id = state.pty_manager.get(tab_id).map(|s| s.window_id.clone());
 
-        let mut layouts = state.window_layouts.lock().unwrap();
-        if let Some(win_layouts) = layouts.get_mut(&window_id) {
+    state.pty_manager.close(tab_id);
+
+    let mut layouts = state.window_layouts.lock().unwrap();
+    for (win_id, win_layouts) in layouts.iter_mut() {
+        if target_win_id.is_none() || target_win_id.as_deref() == Some(win_id.as_str()) {
             let mut remove_indices = Vec::new();
             for (idx, node) in win_layouts.iter_mut().enumerate() {
                 if matches!(node, LayoutNode::Pane { tab_id: ref tid } if tid == tab_id) {
@@ -78,24 +78,15 @@ pub async fn apply_session(
         }
         return Ok(Json(serde_json::json!({
             "status": "valid",
-            "window_id": window_id
+            "window": window_id
         })));
     }
 
-    let win_id = crate::yaml::apply_yaml_spec(&state, &spec, win_override, req.suffix.as_deref(), is_suffix_auto)
+    let window_id = crate::yaml::apply_yaml_spec(&state, &spec, win_override, req.suffix.as_deref(), is_suffix_auto)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
-    if let Some(app_handle) = &state.app_handle {
-        if let Some(window) = app_handle.get_webview_window(&win_id) {
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-            let _ = window.eval("if (window.__triggerSyncTabs) window.__triggerSyncTabs();");
-        }
-    }
-
     Ok(Json(serde_json::json!({
-        "status": "ok",
-        "window_id": win_id
+        "status": "applied",
+        "window": window_id
     })))
 }

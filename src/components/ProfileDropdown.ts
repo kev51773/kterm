@@ -15,6 +15,7 @@ export function closeProfileSubMenu() {
 export interface ProfileDropdownActions {
   spawnTabWithProfile: (profile: string, elevated: boolean) => Promise<void>;
   triggerExportSave: () => Promise<void>;
+  openRemoteAccessModal: () => void;
   openSettingsModal: () => void;
 }
 
@@ -90,6 +91,19 @@ export function renderProfileDropdownMenu() {
     }
   });
   profileDropdownEl.appendChild(exportItem);
+
+  const remoteItem = document.createElement('div');
+  remoteItem.className = 'profile-dropdown-item';
+  remoteItem.innerHTML = `Remote Access...`;
+  remoteItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeProfileSubMenu();
+    profileDropdownEl.style.display = 'none';
+    if (dropdownActions) {
+      dropdownActions.openRemoteAccessModal();
+    }
+  });
+  profileDropdownEl.appendChild(remoteItem);
 
   const settingsItem = document.createElement('div');
   settingsItem.className = 'profile-dropdown-item';
