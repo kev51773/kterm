@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>kterm Mobile Remote Access</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      position: fixed;
+      inset: 0;
+    }
+
+    .screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .screen.active { display: flex !important; }
+
+    /* Login Screen */
+    #screen-login { align-items: center; justify-content: center; padding: 24px; }
+    .login-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; width: 100%; max-width: 360px; text-align: center; }
+    .login-card h2 { margin: 0 0 8px; color: #58a6ff; font-size: 20px; }
+    .login-card p { margin: 0 0 20px; font-size: 13px; color: #8b949e; }
+    .input-field { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #f0f6fc; font-size: 15px; margin-bottom: 16px; outline: none; }
+    .input-field:focus { border-color: #58a6ff; }
+    .btn { width: 100%; padding: 10px; background: #238636; border: none; border-radius: 6px; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .btn:active { background: #2ea043; }
+    .err-msg { color: #f85149; font-size: 12px; margin-top: 12px; display: none; }
+
+    /* Shell List Screen */
+    .top-bar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #161b22; border-bottom: 1px solid #30363d; }
+    .top-bar h3 { margin: 0; font-size: 15px; color: #f0f6fc; }
+    .btn-sm { padding: 5px 10px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 12px; cursor: pointer; }
+    .btn-sm:active { background: #30363d; }
+    .shell-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .shell-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; cursor: pointer; transition: border-color 0.2s; }
+    .shell-card:active { border-color: #58a6ff; background: #1c2128; }
+    .shell-card-title { font-weight: 600; font-size: 15px; color: #58a6ff; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .shell-card-badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #21262d; color: #8b949e; font-weight: normal; }
+    .shell-card-sub { font-size: 12px; color: #8b949e; }
+
+    /* Terminal Screen */
+    #screen-term {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .term-container {
+      flex: 1 1 auto;
+      min-height: 0;
+      background: #000;
+      padding: 4px;
+      position: relative;
+      overflow: hidden;
+    }
+    .term-container .xterm { height: 100%; }
+    .kb-container {
+      flex-shrink: 0;
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      padding: 4px 4px max(4px, env(safe-area-inset-bottom)) 4px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    mobile-keyboard { display: block; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <!-- 1. LOGIN SCREEN -->
+  <div id="screen-login" class="screen active">
+    <div class="login-card">
+      <h2>kterm Remote</h2>
+      <p>Enter access password to connect</p>
+      <form id="login-form" action="javascript:void(0);">
+        <input type="password" id="pw-input" class="input-field" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" id="btn-login" class="btn">Connect</button>
+      </form>
+      <div id="login-err" class="err-msg">Invalid password</div>
+    </div>
+  </div>
+
+  <!-- 2. SHELL LIST SCREEN -->
+  <div id="screen-shells" class="screen">
+    <div class="top-bar">
+      <h3>Active Shells</h3>
+      <div>
+        <button id="btn-new-shell" class="btn-sm" style="background:#238636; color:#fff; border:none; margin-right:4px;">+ New Shell</button>
+        <button id="btn-refresh" class="btn-sm">Refresh</button>
+        <button id="btn-logout" class="btn-sm">Logout</button>
+      </div>
+    </div>
+    <div id="shell-container" class="shell-list"></div>
+  </div>
+
+  <!-- 3. TERMINAL SCREEN -->
+  <div id="screen-term" class="screen">
+    <div class="top-bar">
+      <button id="btn-back" class="btn-sm">← Shells</button>
+      <h3 id="term-title">Terminal</h3>
+      <button id="btn-disc" class="btn-sm">Disconnect</button>
+    </div>
+    <div id="terminal" class="term-container"></div>
+    <div class="kb-container">
+      <mobile-keyboard id="kb" layout="uk"></mobile-keyboard>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="mobile-keyboard.js"></script>
+  <script>
+    var token = sessionStorage.getItem('kterm_token') || '';
+    var activeTabId = null;
+    var ws = null;
+    var term = null;
+    var fitAddon = null;
+    var kb = document.getElementById('kb');
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(function(el) { el.classList.remove('active'); });
+      var target = document.getElementById(id);
+      if (target) target.classList.add('active');
+    }
+
+    function initAuth() {
+      if (!token) {
+        showScreen('screen-login');
+        return;
+      }
+      fetch('/api/auth/check?token=' + encodeURIComponent(token) + '&_t=' + Date.now())
+      .then(function(res) {
+        if (res.ok) {
+          loadShells();
+        } else {
+          token = '';
+          sessionStorage.removeItem('kterm_token');
+          showScreen('screen-login');
+        }
+      })
+      .catch(function() {
+        token = '';
+        sessionStorage.removeItem('kterm_token');
+        showScreen('screen-login');
+      });
+    }
+
+    initAuth();
+
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      doLogin();
+    });
+
+    function doLogin() {
+      var pw = document.getElementById('pw-input').value;
+      var errEl = document.getElementById('login-err');
+      errEl.style.display = 'none';
+
+      fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+        body: JSON.stringify({ password: pw })
+      })
+      .then(function(res) {
+        if (!res.ok) throw new Error('Invalid password');
+        return res.json();
+      })
+      .then(function(data) {
+        token = data.token;
+        sessionStorage.setItem('kterm_token', token);
+        document.getElementById('pw-input').value = '';
+        loadShells();
+      })
+      .catch(function(err) {
+        errEl.textContent = err.message || 'Login failed';
+        errEl.style.display = 'block';
+      });
+    }
+
+    document.getElementById('btn-logout').addEventListener('click', function() {
+      token = '';
+      sessionStorage.removeItem('kterm_token');
+      showScreen('screen-login');
+    });
+
+    document.getElementById('btn-refresh').addEventListener('click', loadShells);
+    document.getElementById('btn-new-shell').addEventListener('click', createNewShell);
+
+    function createNewShell() {
+      fetch('/api/tabs/new?token=' + encodeURIComponent(token) + '&_t=' + Date.now(), {
+        method: 'POST',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      .then(function(res) {
+        if (res.status === 401) {
+          token = '';
+          sessionStorage.removeItem('kterm_token');
+          showScreen('screen-login');
+          throw new Error('Session expired. Please log in again.');
+        }
+        if (!res.ok) throw new Error('Failed to create shell');
+        return res.json();
+      })
+      .then(function(tab) {
+        connectShell(tab);
+      })
+      .catch(function(err) {
+        alert(err.message || 'Error creating shell');
+      });
+    }
+
+    function loadShells() {
+      showScreen('screen-shells');
+      var container = document.getElementById('shell-container');
+      container.innerHTML = '<div style="color:#8b949e; text-align:center; padding:20px;">Loading shells...</div>';
+
+      fetch('/api/tabs?token=' + encodeURIComponent(token) + '&_t=' + Date.now(), {
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      .then(function(res) {
+        if (!res.ok || res.status === 401) {
+          token = '';
+          sessionStorage.removeItem('kterm_token');
+          showScreen('screen-login');
+          return null;
+        }
+        return res.json();
+      })
+      .then(function(tabs) {
+        if (!tabs) return;
+        container.innerHTML = '';
+        if (tabs.length === 0) {
+          container.innerHTML = '<div style="color:#8b949e; text-align:center; padding:20px;">No active shells found on desktop.<br><br><button onclick="createNewShell()" style="padding:8px 16px; background:#238636; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">+ Create New Shell</button></div>';
+          return;
+        }
+        tabs.forEach(function(tab) {
+          var card = document.createElement('div');
+          card.className = 'shell-card';
+          card.innerHTML = 
+            '<div class="shell-card-title">' +
+              '<span>' + escapeHtml(tab.title || tab.profile) + '</span>' +
+              '<span class="shell-card-badge">PID ' + tab.pid + '</span>' +
+            '</div>' +
+            '<div class="shell-card-sub">Profile: ' + escapeHtml(tab.profile) + ' · Size: ' + tab.cols + 'x' + tab.rows + '</div>';
+          card.addEventListener('click', function() {
+            connectShell(tab);
+          });
+          container.appendChild(card);
+        });
+      })
+      .catch(function() {
+        token = '';
+        sessionStorage.removeItem('kterm_token');
+        showScreen('screen-login');
+      });
+    }
+
+    function preventNativeKeyboard() {
+      var termEl = document.getElementById('terminal');
+      if (!termEl) return;
+      var textareas = termEl.querySelectorAll('textarea');
+      textareas.forEach(function(ta) {
+        ta.setAttribute('inputmode', 'none');
+        ta.setAttribute('readonly', 'true');
+        ta.setAttribute('tabindex', '-1');
+        ta.blur();
+      });
+    }
+
+    function applyFitAndResize() {
+      if (!term || !fitAddon) return;
+      try {
+        fitAddon.fit();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+        }
+      } catch(e){}
+    }
+
+    function connectShell(tab) {
+      activeTabId = tab.id;
+      document.getElementById('term-title').textContent = tab.title || tab.profile;
+      showScreen('screen-term');
+
+      var termEl = document.getElementById('terminal');
+      termEl.innerHTML = '';
+
+      if (term) {
+        try { term.dispose(); } catch(e){}
+      }
+
+      term = new Terminal({
+        cursorBlink: true,
+        fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+        fontSize: 13,
+        theme: {
+          background: '#000000',
+          foreground: '#7ee787'
+        }
+      });
+
+      if (window.FitAddon && window.FitAddon.FitAddon) {
+        fitAddon = new window.FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+      } else {
+        fitAddon = null;
+      }
+
+      term.open(termEl);
+
+      // Fit layout after DOM render
+      setTimeout(function() {
+        applyFitAndResize();
+      }, 50);
+
+      // Disable native OS soft keyboard
+      preventNativeKeyboard();
+      termEl.addEventListener('touchstart', preventNativeKeyboard, { passive: true });
+      termEl.addEventListener('click', preventNativeKeyboard);
+
+      var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      var wsUrl = protocol + '//' + location.host + '/ws/remote?token=' + encodeURIComponent(token) + '&tab_id=' + encodeURIComponent(tab.id);
+
+      if (ws) {
+        try { ws.close(); } catch(e){}
+      }
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = function() {
+        applyFitAndResize();
+      };
+
+      ws.onmessage = function(e) {
+        term.write(e.data);
+      };
+
+      ws.onclose = function() {
+        term.write('\r\n\x1b[31m[Disconnected from server]\x1b[0m\r\n');
+      };
+
+      term.onData(function(data) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(data);
+        }
+      });
+    }
+
+    window.addEventListener('resize', function() {
+      applyFitAndResize();
+    });
+
+    document.getElementById('btn-back').addEventListener('click', disconnectAndBack);
+    document.getElementById('btn-disc').addEventListener('click', disconnectAndBack);
+
+    function disconnectAndBack() {
+      if (ws) {
+        try { ws.close(); } catch(e){}
+        ws = null;
+      }
+      loadShells();
+    }
+
+    // Connect mobile-keyboard keyinput events
+    kb.addEventListener('keyinput', function(e) {
+      preventNativeKeyboard();
+
+      var d = e.detail;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+      if (d.type === 'char') {
+        if (d.ctrlKey) {
+          if (d.char.length === 1) {
+            var code = d.char.toUpperCase().charCodeAt(0);
+            if (code >= 64 && code <= 95) {
+              ws.send(String.fromCharCode(code - 64));
+              return;
+            }
+          }
+        }
+        if (d.altKey) {
+          ws.send('\x1b' + d.char);
+          return;
+        }
+        ws.send(d.char);
+      } else if (d.type === 'key') {
+        var seq = mapKeyToSeq(d);
+        if (seq) ws.send(seq);
+      }
+    });
+
+    function mapKeyToSeq(d) {
+      switch (d.key) {
+        case 'Backspace': return '\x7f';
+        case 'Delete': return '\x1b[3~';
+        case 'Enter': return '\r';
+        case 'Tab': return d.shiftKey ? '\x1b[Z' : '\t';
+        case 'Escape': return '\x1b';
+        case 'ArrowUp': return d.ctrlKey ? '\x1b[1;5A' : d.altKey ? '\x1b[1;3A' : '\x1b[A';
+        case 'ArrowDown': return d.ctrlKey ? '\x1b[1;5B' : d.altKey ? '\x1b[1;3B' : '\x1b[B';
+        case 'ArrowRight': return d.ctrlKey ? '\x1b[1;5C' : d.altKey ? '\x1b[1;3C' : '\x1b[C';
+        case 'ArrowLeft': return d.ctrlKey ? '\x1b[1;5D' : d.altKey ? '\x1b[1;3D' : '\x1b[D';
+        case 'Home': return '\x1b[H';
+        case 'End': return '\x1b[F';
+        case 'PageUp': return '\x1b[5~';
+        case 'PageDown': return '\x1b[6~';
+        case 'F1': return '\x1bOP';
+        case 'F2': return '\x1bOQ';
+        case 'F3': return '\x1bOQ';
+        case 'F4': return '\x1bOS';
+        case 'F5': return '\x1b[15~';
+        case 'F6': return '\x1b[17~';
+        case 'F7': return '\x1b[18~';
+        case 'F8': return '\x1b[19~';
+        case 'F9': return '\x1b[20~';
+        case 'F10': return '\x1b[21~';
+        case 'F11': return '\x1b[23~';
+        case 'F12': return '\x1b[24~';
+        default: return null;
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <title>Terminal Keyboard Test — Mobile</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; flex-direction: column;
+      background: #0d1117; color: #e6edf3;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      overscroll-behavior: none;
+    }
+    header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-bottom: 1px solid #21262d;
+    }
+    header h1 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; }
+    a.ctl {
+      background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+      text-decoration: none;
+    }
+    a.ctl:active { background: #388bfd; }
+    button.ctl {
+      background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    }
+    button.ctl:active { background: #388bfd; }
+    main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .chips { display: flex; gap: 6px; padding: 8px 12px 0; }
+    .chip {
+      padding: 2px 9px; border-radius: 999px; background: #21262d;
+      color: #8b949e; font-size: 11px; font-weight: 600; letter-spacing: .04em;
+    }
+    .chip.on { background: #238636; color: #fff; }
+    .hint { padding: 8px 12px 0; font-size: 11px; color: #8b949e; }
+    .screen { flex: 1; min-height: 0; padding: 10px 12px; display: flex; flex-direction: column; }
+    .termwrap { position: relative; flex: 1; min-height: 0; }
+    .termwrap textarea {
+      position: absolute; inset: 0; width: 100%; height: 100%; resize: none; outline: none;
+      background: #010409; color: #7ee787;
+      border: 1px solid #21262d; border-radius: 8px; padding: 10px;
+      font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+      font-size: 14px; line-height: 1.5; white-space: pre; overflow: auto;
+      caret-color: transparent;
+    }
+    #cursor {
+      position: absolute; display: none; pointer-events: none; z-index: 2;
+      background: rgba(126, 231, 135, 0.85);
+      animation: curblink 1.06s steps(1) infinite;
+    }
+    @keyframes curblink { 50% { opacity: 0; } }
+    .log {
+      height: 110px; overflow-y: auto; padding: 6px 12px;
+      border-top: 1px solid #21262d;
+      font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+    }
+    .le { padding: 1px 0; white-space: nowrap; }
+    .le.mod { color: #d2a8ff; }
+    .le.key { color: #79c0ff; }
+    .le.char { color: #7ee787; }
+    .le.repeat { opacity: .7; }
+    .le.mode { color: #f0883e; }
+    .kb-wrap { padding: 8px 8px 10px; border-top: 1px solid #21262d; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Terminal Keyboard — Mobile</h1>
+    <button class="ctl" id="btnLayout">Layout: UK</button>
+    <button class="ctl" id="btnClear">Clear screen</button>
+    <button class="ctl" id="btnLog">Clear log</button>
+  </header>
+
+  <main>
+    <div class="chips">
+      <span class="chip" id="chMode">MODE: abc</span>
+      <span class="chip" id="chShift">SHIFT</span>
+      <span class="chip" id="chCtrl">CTRL</span>
+      <span class="chip" id="chAlt">ALT</span>
+      <span class="chip" id="chCaps">CAPS</span>
+    </div>
+
+    <div class="hint">?123 / =\< keys switch pages · long-press / = toggle \ · long-press ESC = F1–F12 row · long-press ⌫ = toggle Delete · long-press TAB = Shift+Tab · swipe anywhere = move cursor · two-finger swipe down = collapse keyboard · tap bar to restore · tap modifier = next key · tap twice = lock · hold = chord</div>
+
+    <section class="screen">
+      <div class="termwrap">
+        <textarea id="term" readonly spellcheck="false" autocomplete="off" autocorrect="off"
+          autocapitalize="off" wrap="off">type with the virtual keyboard below&#10;</textarea>
+        <div id="cursor"></div>
+      </div>
+    </section>
+
+    <section class="log" id="log"></section>
+
+    <section class="kb-wrap">
+      <mobile-keyboard id="kb" layout="uk"></mobile-keyboard>
+    </section>
+  </main>
+
+  <script src="mobile-keyboard.js"></script>
+  <script>
+    var kb = document.getElementById('kb');
+    var term = document.getElementById('term');
+    var logEl = document.getElementById('log');
+    var chips = {
+      mode: document.getElementById('chMode'),
+      shift: document.getElementById('chShift'),
+      ctrl: document.getElementById('chCtrl'),
+      alt: document.getElementById('chAlt'),
+      caps: document.getElementById('chCaps')
+    };
+
+    function insertText(text) {
+      var start = term.selectionStart, end = term.selectionEnd;
+      term.value = term.value.slice(0, start) + text + term.value.slice(end);
+      var pos = start + text.length;
+      term.selectionStart = term.selectionEnd = pos;
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function backspace() {
+      var start = term.selectionStart, end = term.selectionEnd;
+      if (start === end && start > 0) start--;
+      term.value = term.value.slice(0, start) + term.value.slice(end);
+      term.selectionStart = term.selectionEnd = start;
+    }
+
+    function delForward() {
+      var start = term.selectionStart, end = term.selectionEnd;
+      if (start === end && end < term.value.length) end++;
+      term.value = term.value.slice(0, start) + term.value.slice(end);
+      term.selectionStart = term.selectionEnd = start;
+    }
+
+    function lineCol(text, pos) {
+      var before = text.slice(0, pos);
+      var lines = before.split('\n');
+      return { line: lines.length - 1, col: lines[lines.length - 1].length };
+    }
+
+    var cur = document.getElementById('cursor');
+    var mctx = document.createElement('canvas').getContext('2d');
+    mctx.font = '14px ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace';
+    var CHAR_W = mctx.measureText('M').width;
+    var LINE_H = parseFloat(getComputedStyle(term).lineHeight) || 21;
+
+    function updateCursor() {
+      if (term.selectionStart !== term.selectionEnd) {
+        cur.style.display = 'none';
+        return;
+      }
+      var lc = lineCol(term.value, term.selectionStart);
+      var pad = 10;
+      cur.style.left = (pad + lc.col * CHAR_W - term.scrollLeft) + 'px';
+      cur.style.top = (pad + lc.line * LINE_H - term.scrollTop) + 'px';
+      cur.style.width = CHAR_W + 'px';
+      cur.style.height = LINE_H + 'px';
+      cur.style.display = 'block';
+    }
+
+    term.addEventListener('click', updateCursor);
+    term.addEventListener('scroll', updateCursor);
+    term.addEventListener('focus', updateCursor);
+    window.addEventListener('resize', updateCursor);
+
+    function moveCursor(deltaLine, deltaCol, toEdge) {
+      var text = term.value;
+      var pos = term.selectionStart;
+      var lines = text.split('\n');
+      if (toEdge === 'home') {
+        pos = text.slice(0, pos).lastIndexOf('\n') + 1;
+      } else if (toEdge === 'end') {
+        var lc2 = lineCol(text, pos);
+        pos = text.slice(0, pos).length + (lines[lc2.line].length - lc2.col);
+      } else {
+        var cur = lineCol(text, pos);
+        var nl = Math.max(0, Math.min(lines.length - 1, cur.line + deltaLine));
+        var col = Math.max(0, cur.col + deltaCol);
+        col = Math.min(col, lines[nl].length);
+        pos = 0;
+        for (var i = 0; i < nl; i++) pos += lines[i].length + 1;
+        pos += col;
+      }
+      term.selectionStart = term.selectionEnd = pos;
+    }
+
+    function logLine(d) {
+      var mods = [];
+      if (d.shiftKey) mods.push('shift');
+      if (d.ctrlKey) mods.push('ctrl');
+      if (d.altKey) mods.push('alt');
+      if (d.capsLock) mods.push('caps');
+
+      var cls = d.type === 'mod' ? 'mod' : d.type === 'key' ? 'key' : 'char';
+      if (d.repeat) cls += ' repeat';
+      var line = document.createElement('div');
+      line.className = 'le ' + cls;
+      if (d.type === 'mod') {
+        line.textContent = d.action + ' mod=' + d.mod + ' value=' + (d.value ? 1 : 0);
+      } else {
+        line.textContent = d.action + ' ' + d.type + ' ' + JSON.stringify(d.key) +
+          ' code=' + d.code + ' [' + (mods.length ? mods.join('+') : '-') + ']';
+      }
+      logEl.appendChild(line);
+      while (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function logMode(mode) {
+      var line = document.createElement('div');
+      line.className = 'le mode';
+      line.textContent = 'modechange ' + mode;
+      logEl.appendChild(line);
+      while (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    kb.addEventListener('modechange', function (e) {
+      chips.mode.textContent = 'MODE: ' + e.detail.mode;
+      chips.mode.classList.toggle('on', true);
+      logMode(e.detail.mode);
+    });
+
+    kb.addEventListener('keyinput', function (e) {
+      var d = e.detail;
+      logLine(d);
+      chips.shift.classList.toggle('on', d.shiftKey);
+      chips.ctrl.classList.toggle('on', d.ctrlKey);
+      chips.alt.classList.toggle('on', d.altKey);
+      chips.caps.classList.toggle('on', d.capsLock);
+
+      if (d.type === 'char') {
+        if (!d.ctrlKey && !d.altKey) insertText(d.char);
+        updateCursor();
+        return;
+      }
+      if (d.type !== 'key') return;
+      switch (d.key) {
+        case 'Backspace': backspace(); break;
+        case 'Delete': delForward(); break;
+        case 'Enter': insertText('\n'); break;
+        case 'Tab': insertText('\t'); break;
+        case 'ArrowLeft': moveCursor(0, -1); break;
+        case 'ArrowRight': moveCursor(0, 1); break;
+        case 'ArrowUp': moveCursor(-1, 0); break;
+        case 'ArrowDown': moveCursor(1, 0); break;
+        case 'Home': moveCursor(0, 0, 'home'); break;
+        case 'End': moveCursor(0, 0, 'end'); break;
+        case 'PageUp': moveCursor(-5, 0); break;
+        case 'PageDown': moveCursor(5, 0); break;
+      }
+      updateCursor();
+    });
+
+    document.getElementById('btnLayout').addEventListener('click', function () {
+      var next = kb.getAttribute('layout') === 'uk' ? 'us' : 'uk';
+      kb.setAttribute('layout', next);
+      this.textContent = 'Layout: ' + next.toUpperCase();
+    });
+
+    document.getElementById('btnClear').addEventListener('click', function () {
+      term.value = '';
+      term.selectionStart = term.selectionEnd = 0;
+      updateCursor();
+    });
+
+    document.getElementById('btnLog').addEventListener('click', function () {
+      logEl.textContent = '';
+    });
+
+    term.selectionStart = term.selectionEnd = term.value.length;
+    term.scrollTop = term.scrollHeight;
+    updateCursor();
+  </script>
+</body>
+</html>

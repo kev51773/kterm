@@ -6,6 +6,7 @@ mod exporter;
 mod ipc;
 mod named_pipe;
 mod pty;
+mod remote;
 mod yaml;
 
 use clap::Parser;
@@ -474,8 +475,12 @@ fn run_host_daemon(args: CliArgs) {
             ipc::export_layout,
             ipc::export_shortcut,
             ipc::apply_session,
+            remote::get_remote_status,
+            remote::enable_remote_server,
+            remote::disable_remote_server,
         ])
         .setup(move |app| {
+            app.manage(Arc::new(Mutex::new(remote::RemoteServerManager::default())));
             // Pre-flight purge for win-1 on daemon setup
             let sessions = pty_manager.list_by_window(Some("win-1"));
             for s in sessions {
