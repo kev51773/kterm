@@ -66,14 +66,14 @@ From `autotest/`:
 | `npm run test:gui:apply` | apply | `02-apply.spec.ts` (2 tests) |
 | `npm run test:gui:admin` | admin | `03-admin.spec.ts` (1 test) |
 | `npm run test:gui:ux` | default | `04-ux.spec.ts` (8 tests) |
-| `npm run test:gui:all` | mixed | `admin → core → apply → ux` (each its own run) then all CLI |
+| `npm run test:gui:all` (or `./run-all.sh`) | mixed | `admin → core → apply → ux` (each its own run) then all CLI |
 | `npm run test:cli` | default | all `specs/cli/*.spec.ts` (20-basic … 27-suffix-focus) |
 | `npm run test` | default | everything in the `specs` glob |
 | `npm run report` | — | static HTML report of the last run → `tmp/report.html` |
-| `npm run review` | — | interactive review server on `http://127.0.0.1:8765` — **the** way to promote baselines |
+| `npm run review` (or `./review.sh`) | — | interactive review server on `http://127.0.0.1:8765` — **the** way to promote baselines |
 | `npm run test:update-baseline` | — | auto-refreshes every baseline (`UPDATE_BASELINE=1`). **Deprecated — use `npm run review` instead** (see "Promoting baselines") |
 | `npm run compare` | — | pixel-diff actual vs baseline (the visual gate) |
-| `npm run build` | — | rebuild release binary (`cd .. && npx tauri build --no-bundle`) |
+| `npm run build` (or `../make-release.sh`) | — | rebuild release binary (`cd .. && npx tauri build --no-bundle`) |
 
 **`test:gui:all` must run from an elevated terminal** (admin suite fires a real UAC
 prompt — see gotcha). Order is deliberate: admin first so the UAC prompt appears

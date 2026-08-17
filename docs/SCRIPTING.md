@@ -8,14 +8,14 @@ This document describes every CLI command available in `kterm.exe` for scripting
 
 `kterm.exe` is a **dual-mode executable**:
 
-1. **Host Mode** (`--daemon`): Runs the Axum HTTP daemon on `127.0.0.1:9999`, launches the Tauri GUI window. This mode is started automatically when no daemon is running.
-2. **Client Mode** (all other invocations): Connects to an existing daemon via HTTP, executes the requested command, prints output to stdout, and exits.
+1. **Host Mode** (`--daemon`): Runs the Tauri GUI window, listens on Win32 Named Pipe `\\.\pipe\kterm_daemon`, and exposes native Tauri IPC channels. Starts on-demand Axum HTTP server for remote access if enabled.
+2. **Client Mode** (all other invocations): Connects to an active daemon over `\\.\pipe\kterm_daemon`, executes the requested command, prints output to stdout, and exits immediately.
 
 When you run any `kterm.exe` command:
-1. Client checks if `127.0.0.1:9999` is reachable.
-2. If not — spawns a detached daemon process (waits up to 5 seconds for it to start).
-3. If the running daemon is a different version — shuts it down and restarts.
-4. Executes the CLI command via HTTP API.
+1. Client attempts connection to named pipe `\\.\pipe\kterm_daemon`.
+2. If pipe unavailable — spawns a detached daemon process (waits up to 5 seconds for initialization).
+3. If pipe busy (`ERROR_PIPE_BUSY`) — retries automatically with exponential backoff.
+4. Executes the CLI command via Named Pipe IPC.
 5. Prints result to stdout and exits.
 
 Every command below works whether or not kterm is already running — the daemon starts on-demand.

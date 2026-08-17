@@ -96,13 +96,14 @@ Each tab in the tab bar represents either a single pane or a split group.
 
 ### 3.1 Profile Dropdown (Click `▼`)
 
-| Item | Action |
+| Option | Action |
 |------|--------|
 | PowerShell | Left-click: spawn new tab with `powershell` profile. |
 | Command Prompt | Left-click: spawn new tab with `cmd` profile. |
 | WSL | Left-click: spawn new tab with `wsl` profile. |
 | Git Bash | Left-click: spawn new tab with `git-bash` profile. |
 | *(divider)* | — |
+| Remote Access... | Opens standalone Remote Access modal dialog for mobile/web connection setup. |
 | Export Layout... | Opens save dialog, exports current window layout as YAML. |
 | Settings `Ctrl+,` | Opens the settings modal. |
 
@@ -386,6 +387,9 @@ When a target is detected, context-sensitive actions are dynamically prepended t
 | Default Grid Columns | Number input | 40–300 | 120 |
 | Default Grid Rows | Number input | 10–150 | 30 |
 | Ring Buffer Capacity | Number input | 64–4096 KB (step 64) | 256 |
+| Attention Bell Enabled | Checkbox | Enabled / Disabled | Enabled |
+| Task Duration Threshold | Number input | 1–300 seconds | 10 seconds |
+| Desktop Notification | Checkbox | Enabled / Disabled | Enabled |
 
 ### 9.4 Keybindings Tab
 
@@ -621,6 +625,44 @@ User background/foreground overrides are applied on top of this base.
 - **Elevated Spawn Surface**: Validated `pipe_id` in `elevated.rs` to enforce alphanumeric/hyphen/underscore naming, eliminating named pipe path traversal/injection risks.
 - **WebSocket IPC Clamping**: Enforced parameter boundary clamping on incoming WebSocket `resize` events (`cols` 1–1000, `rows` 1–500) in `daemon/websocket.rs`.
 - **Dead-Code & Type Safety**: Cleaned unused imports, typecheck (`tsc --noEmit`) 100% green, cargo tests 111/111 passing.
+
+---
+
+## 16. Remote Access & Mobile Web UI
+
+### 16.1 Remote Access Setup Modal
+
+Opened from Profile Dropdown → `Remote Access...`:
+- **Toggle Remote Server**: Enable or disable the background Axum HTTP/WebSocket server.
+- **Port Selection**: Default port `9999` (configurable).
+- **Password Authentication**: Set or auto-generate secure password required for web logins.
+- **QR Code & Network URLs**: Displays local IP addresses (`http://<ip>:9999`) and QR code for scanning from mobile devices.
+
+### 16.2 Mobile Web UI (`web/index.html`)
+
+- **Responsive Terminal**: Terminal viewport scales dynamically to mobile screen dimensions.
+- **Web Shell Picker Modal**: Choose shell profile when launching remote sessions (PowerShell, Command Prompt, WSL, Git Bash).
+- **Virtual Touch Keyboard (`web/mobile-keyboard.js`)**:
+  - Modifier toggles (`Ctrl`, `Alt`, `Shift`).
+  - Terminal navigation keys (Arrow keys, `Tab`, `Esc`, `Home`, `End`, `PageUp`, `PageDown`).
+  - Quick action keys (`Ctrl+C`, `Ctrl+D`, `Ctrl+Z`, `Clear`).
+- **Layout Sync & Active Resizing**: Option B active PTY resizing syncs terminal column/row count automatically on viewport orientation or window size changes.
+
+---
+
+## 17. Attention Bell & Long Task Reminders
+
+### 17.1 Task Duration Monitoring
+
+- Monitors active commands running in terminal panes.
+- When output pauses and shell returns to prompt after exceeding the configured duration threshold (default: 10 seconds), the attention bell fires.
+
+### 17.2 Notifications & Visual Indicators
+
+- **Audio Chime**: Web Audio API synthesized soft alert chime.
+- **Desktop OS Notification**: System toast notification specifying the tab title and completed command execution time.
+- **Tab Header Indicator**: Flashes the target tab's header highlight and badges until the tab receives user focus.
+
 
 
 

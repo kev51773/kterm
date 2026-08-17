@@ -1,17 +1,19 @@
 # kterm - Scriptable Windows-Native Terminal
 
-`kterm` is a high-performance, scriptable Windows-native terminal application built with **Tauri v2**, **Rust** (`portable-pty` for ConPTY + Axum embedded daemon), and **TypeScript** (`xterm.js`).
+`kterm` is a high-performance, scriptable Windows-native terminal application built with **Tauri v2**, **Rust** (`portable-pty` for ConPTY, native Win32 Named Pipe daemon, and embedded Axum web server), and **TypeScript** (`xterm.js`).
 
-It behaves like Windows Terminal with modern tabs, split panes, dark theme styling, and keybindings, while providing a powerful **dual-mode CLI interface** (`kterm.exe`) for automation, scripting, and remote control.
+It behaves like Windows Terminal with modern tabs, split panes, dark theme styling, and keybindings, while providing a powerful **dual-mode CLI interface** (`kterm.exe`) for automation, scripting, remote control, and web-based mobile access.
 
 ---
 
 ## Key Features
 
-- ⚡ **Embedded API Daemon**: Runs a background HTTP/WebSocket server on `127.0.0.1:9999`.
+- ⚡ **IPC & Daemon Architecture**: Desktop GUI uses native Tauri IPC; CLI communicates via low-latency Win32 Named Pipe (`\\.\pipe\kterm_daemon`).
+- 🌐 **Remote Access & Mobile Web UI**: Embedded password-protected Axum web server (`127.0.0.1:9999`) serving a mobile-optimized terminal web UI with virtual keyboard and web shell picker.
+- 🔔 **Attention Bell**: Audio chime, OS desktop notification, and tab header visual indicator when long-running background tasks complete.
 - 🔀 **Dual-Mode Executable (`kterm.exe`)**:
   - **Host Mode**: Spawns GUI app + background daemon if no daemon is running.
-  - **Client Mode**: Connects to active daemon, executes CLI commands, prints output to stdout, and exits instantly.
+  - **Client Mode**: Connects to active daemon over named pipe, executes CLI commands, prints output to stdout, and exits instantly.
 - 🪟 **Multi-Window & Multi-Tab**: Full control over windows, tabs, and profiles (`powershell`, `cmd`, `wsl`, `git-bash`).
 - 🧩 **Incremental Target-Based Splits**: Split panes vertically/horizontally, move tabs into splits, or explode splits into standalone tabs.
 - 📝 **Tail-Argument Text Injection**: Pass raw commands directly with `--send-text` without complex shell escaping.
@@ -25,23 +27,25 @@ It behaves like Windows Terminal with modern tabs, split panes, dark theme styli
 
 ```
                        CLI Invocation (kterm.exe --select-tab ID --send-text ...)
-                                         │
-                                         ▼
-                             ┌───────────────────────┐
-                             │ Check 127.0.0.1:9999  │
-                             └───────────┬───────────┘
-                                         │
-                   ┌─────────────────────┴─────────────────────┐
-                   │ Daemon Running?                           │
-                   ▼                                           ▼
-                 [YES]                                       [NO]
-                   │                                           │
-  ┌─────────────────────────────────┐        ┌─────────────────────────────────┐
-  │ HTTP Client Mode                │        │ GUI Host Mode                   │
-  │ 1. Parse CLI flags              │        │ 1. Start Axum Daemon (port 9999)│
-  │ 2. Call HTTP REST API           │        │ 2. Launch Tauri Window + UI     │
-  │ 3. Print output to stdout & exit│        │ 3. Execute initial CLI args     │
-  └─────────────────────────────────┘        └─────────────────────────────────┘
+                                          │
+                                          ▼
+                              ┌───────────────────────┐
+                              │ Win32 Named Pipe      │
+                              │ \\.\pipe\kterm_daemon │
+                              └───────────┬───────────┘
+                                          │
+                    ┌─────────────────────┴─────────────────────┐
+                    │ Daemon Running?                           │
+                    ▼                                           ▼
+                  [YES]                                       [NO]
+                    │                                           │
+   ┌─────────────────────────────────┐        ┌─────────────────────────────────┐
+   │ Pipe Client Mode                │        │ GUI Host Mode                   │
+   │ 1. Parse CLI flags              │        │ 1. Start Named Pipe & Tauri IPC │
+   │ 2. Send command over pipe       │        │ 2. Launch Tauri Window + UI     │
+   │ 3. Print output to stdout & exit│        │ 3. Execute initial CLI args     │
+   └─────────────────────────────────┘        │ 4. Optional Remote Server (9999)│
+                                              └─────────────────────────────────┘
 ```
 
 ---
@@ -178,7 +182,9 @@ $w1_t3 = & kterm.exe --select-tab $w1_t2 --split-down --profile wsl
 
 ---
 
-## HTTP REST & WebSocket API Specification (`127.0.0.1:9999`)
+## HTTP REST & WebSocket Remote Access API (`127.0.0.1:9999`)
+
+*Note: The HTTP REST and WebSocket interface is hosted by the on-demand Remote Access server for browser and mobile connections. Desktop GUI operations use native Tauri IPC, while local CLI invocations communicate via Windows Named Pipe (`\\.\pipe\kterm_daemon`).*
 
 | Method | Endpoint | Description | Body / Query Payload |
 | :--- | :--- | :--- | :--- |

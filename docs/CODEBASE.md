@@ -10,26 +10,45 @@ Per-file, per-function reference for every source file.
 kterm/
 ├── src-tauri/
 │   ├── src/
-│   │   ├── main.rs          (167 lines)  Entry point, CLI dispatch, Tauri setup
-│   │   ├── cli.rs           (268 lines)  Clap argument definitions, help text
-│   │   ├── client.rs        (670 lines)  CLI HTTP client, daemon lifecycle
-│   │   ├── config.rs        (167 lines)  JSON config persistence, window sizing
-│   │   ├── yaml.rs          (343 lines)  YAML parsing, validation, application
-│   │   ├── exporter.rs      (246 lines)  YAML export, Windows .lnk shortcut creation
-│   │   ├── daemon/
-│   │   │   └── mod.rs       (1247 lines) Axum HTTP server, all REST endpoints
-│   │   └── pty/
-│   │       ├── mod.rs       (8 lines)    Re-exports
-│   │       ├── manager.rs   (1080 lines) PTY spawn/kill, elevated bridge, session map
-│   │       ├── layout.rs    (141 lines)  Recursive split tree (LayoutNode)
-│   │       └── ring_buffer.rs (217 lines) Circular output buffer, pattern matching
+│   │   ├── main.rs          Entry point, CLI dispatch, Tauri IPC & daemon setup
+│   │   ├── cli.rs           Clap CLI argument definitions and help text
+│   │   ├── client.rs        CLI named pipe client, IPC dispatch, daemon spawn
+│   │   ├── ipc.rs           Tauri native IPC commands and event dispatch
+│   │   ├── named_pipe.rs    Win32 Named Pipe server (\\.\pipe\kterm_daemon)
+│   │   ├── remote.rs        Axum web server & WebSocket handler for Remote Access
+│   │   ├── config.rs        JSON config persistence, window sizing
+│   │   ├── yaml.rs          YAML parsing, validation, application
+│   │   ├── exporter.rs      YAML export, Windows .lnk shortcut creation
+│   │   ├── daemon/          Modular daemon endpoints (tabs, windows, splits, export, session, config)
+│   │   └── pty/             Modular PTY manager (session, platform, elevated, layout, ring_buffer)
 │   └── Cargo.toml
 ├── src/
-│   ├── main.ts              (2009 lines) Frontend monolith — everything
-│   ├── style.css            (1008 lines) All CSS
+│   ├── main.ts              App entry point, module bootstrap, global event listeners
+│   ├── state.ts             Central state store, tab/pane interfaces
+│   ├── config.ts            Config persistence & dynamic CSS theme applier
+│   ├── daemon.ts            Tauri IPC client wrapper & state synchronizer
+│   ├── terminal.ts          xterm.js instance lifecycle & pane DOM manager
+│   ├── tabs.ts              Tab header strip renderer, focus & group switcher
+│   ├── splits.ts            Split layout renderer, divider handlers, node operations
+│   ├── findBar.ts           In-buffer search overlay & match highlighter
+│   ├── highlights.ts        Word highlight overlay & flashing animation engine
+│   ├── attentionBell.ts     Long-task duration monitor, audio chime & notification sender
+│   ├── style.css            Complete CSS design system
+│   ├── utils/
+│   │   └── detector.ts      Path (Win/POSIX/WSL/Git Bash) & URL parser with tests
 │   └── components/
-│       ├── SplitGrid.ts     (111 lines)  Split pane DOM renderer
-│       └── SettingsModal.ts (495 lines)  Settings UI
+│       ├── SplitGrid.ts     Split pane DOM renderer
+│       ├── SettingsModal.ts Settings dialog (Appearance, General, Keybinds, Remote, Attention)
+│       ├── ProfileDropdown.ts Profile launcher & Remote Access / Export trigger
+│       ├── RemoteAccessModal.ts Remote Access configuration & QR code dialog
+│       ├── ContextMenu.ts   Terminal pane & tab context menu with path/URL actions
+│       ├── InputModal.ts    Text entry modal dialog
+│       ├── HighlightsModal.ts Highlight manager dialog
+│       └── TabBar.ts        Tab strip scroll buttons & drag spacer
+├── web/
+│   ├── index.html           Standalone web terminal interface with shell picker
+│   ├── mobile-keyboard.js  Custom touch keyboard for mobile remote shell
+│   └── mobile.html          Mobile touch terminal view
 ├── index.html
 ├── package.json
 └── vite.config.ts
@@ -87,18 +106,15 @@ kterm/
 
 ---
 
-### `client.rs` — CLI HTTP Client
+### `client.rs` — CLI Named Pipe Client
 
-**Lines**: 670
-
-| Line | Function | Input | Output | Responsibility |
-|------|----------|-------|--------|---------------|
-| 10 | `is_daemon_running()` | — | bool | TCP connect test to `127.0.0.1:9999` |
-| 17 | `safe_println(msg)` | &str | stdout | Write line to stdout (handles broken pipe) |
-| 22 | `spawn_daemon_detached(exe_path)` | Path | Result | Win32 `CreateProcessW` with `DETACHED_PROCESS` flag |
-| 127 | `ensure_daemon_running()` | — | Result | Check daemon → version check → spawn if needed → wait up to 5s |
-| 172 | `handle_client_mode(args)` | &CliArgs | Result | Main CLI dispatch: apply, export, new-window, list, split, send, read, wait, spawn |
-| 500 | `ensure_window_visible(win_id)` | &str | Result | Fallback: apply default YAML if no windows visible |
+| Function | Input | Output | Responsibility |
+|---|---|---|---|
+| `is_daemon_running()` | — | bool | Checks if `\\.\pipe\kterm_daemon` named pipe exists |
+| `safe_println(msg)` | &str | stdout | Writes line to stdout (handles broken pipe gracefully) |
+| `spawn_daemon_detached(exe_path)` | Path | Result | Win32 `CreateProcessW` with `DETACHED_PROCESS` flag |
+| `ensure_daemon_running()` | — | Result | Checks pipe → spawns daemon if missing → retries with `ERROR_PIPE_BUSY` wait |
+| `handle_client_mode(args)` | &CliArgs | Result | Main CLI dispatch: serialize args to JSON, send over named pipe, output result |
 
 **`handle_client_mode` dispatch order**:
 1. `--apply` → POST `/apply`
@@ -113,6 +129,35 @@ kterm/
 10. `--read-text` → GET `/tabs/:id/read`
 11. `--wait-for` / `--wait-for-prompt` → POST `/tabs/:id/wait`
 12. Default → POST `/tabs` (spawn tab)
+
+---
+
+### `ipc.rs` — Tauri Native IPC Bridge
+
+| Function / Handler | Input | Output | Responsibility |
+|---|---|---|---|
+| `invoke_cmd` / commands | IPC payload | JSON Result | Handles desktop GUI commands (`list_tabs`, `create_tab`, `send_text`, `close_tabs`, `split_tab`, etc.) via native Tauri IPC |
+| `emit_layout_change` | Window label | Event | Emits event updates to frontend UI on state changes |
+
+---
+
+### `named_pipe.rs` — Win32 Named Pipe Listener
+
+| Function | Input | Output | Responsibility |
+|---|---|---|---|
+| `start_named_pipe_server` | AppState | Task | Listens on `\\.\pipe\kterm_daemon` with `ERROR_PIPE_BUSY` handle retries for CLI client commands |
+| `handle_client_connection` | Pipe stream, AppState | Result | Deserializes CLI request JSON, dispatches action to `PtyManager`/`LayoutNode`, returns response |
+
+---
+
+### `remote.rs` — Remote Access Web Server & Mobile Interface
+
+| Endpoint / Function | Input | Output | Responsibility |
+|---|---|---|---|
+| `start_remote_server` | Port, Password, AppState | Axum Server | Starts on-demand password-protected HTTP & WebSocket server |
+| `GET /` & `/web/*` | HTTP Request | HTML/JS/CSS | Serves mobile web UI (`web/index.html`, `web/mobile-keyboard.js`) |
+| `POST /api/auth` | Password | Auth Token / Cookie | Authenticates remote web sessions |
+| `GET /tabs/:id/ws` | WebSocket | PTY I/O Stream | Bidirectional terminal stream for web client with active resizing |
 
 ---
 
@@ -330,89 +375,58 @@ Re-exports: `LayoutNode`, `SplitDirection`, `PtyManager`, `PtySession`, `RingBuf
 
 ## TypeScript Frontend
 
-### `src/main.ts` — Frontend Monolith
+### Core Modules (`src/`)
 
-**Lines**: 2009
+| Module | Responsibility | Key Functions / Exports |
+|---|---|---|
+| `main.ts` | Entry point & listener setup | App initialization, global keybindings wiring, Tauri IPC listener registration |
+| `state.ts` | State store | `state` object, `getAppState()`, `setAppState()`, `TabData`, `PaneInstance` interfaces |
+| `config.ts` | Config & Theme | `loadAppConfig()`, `saveAppConfig()`, `applyAppConfig()` dynamic CSS variable binding |
+| `daemon.ts` | Tauri IPC & Sync | `syncTabs()`, `invokeTauri()`, tab state reconciliation loop |
+| `terminal.ts` | xterm.js Pane Manager | `createTabLocal()`, `removeTabLocal()`, `adjustWindowForGrid()`, terminal paste handler |
+| `tabs.ts` | Tab Header Strip | `renderTabBarHeaders()`, `selectTab()`, `closeTab()`, tab group navigation |
+| `splits.ts` | Split Layout Operations | `renderActiveLayout()`, `splitPane()`, `unsplitPane()`, `explodeSplit()` |
+| `findBar.ts` | Search Overlay | `showFindBar()`, `closeFindBar()`, search addon match navigation |
+| `highlights.ts` | Highlight Overlay | `updatePaneHighlights()`, dual-phase flashing interval animation engine |
+| `attentionBell.ts` | Task Reminder Bell | Long-task execution monitor, audio chime player, OS desktop notification trigger |
+| `utils/detector.ts` | Path & URL Parser | `detectPathOrUrl()`, regex detection for Win/POSIX/WSL/Git Bash paths & URLs with tests |
 
-Everything in one file. Major sections:
+### UI Components (`src/components/`)
 
-| Line Range | Section | Responsibility |
-|-----------|---------|---------------|
-| 1-30 | Imports | Tauri API, xterm, FitAddon, SplitGrid, SettingsModal |
-| 32-80 | State variables | `currentWindowId`, `terminals` map, `tabs`, `settings`, WebSocket connections |
-| 82-150 | `initWindow()` | Read URL params, load config, create terminal, connect WebSocket, sync tabs |
-| 152-200 | `createTerminal(tabInfo)` | Instantiate xterm + FitAddon, attach to DOM, connect WebSocket |
-| 202-280 | `connectToTab(tabId, term)` | WebSocket to `/tabs/{id}/ws`, handle resize messages, binary data |
-| 282-350 | `syncTabs()` | GET `/tabs?window=X`, reconcile local state, update tab bar |
-| 352-420 | `createTabBar()` | Render tab strip DOM (badges, colors, close buttons) |
-| 422-500 | `handleTabClick/Close/ContextMenu()` | Tab interaction handlers |
-| 502-600 | Keyboard shortcuts | Ctrl+T/N/W, Ctrl+Shift+T, Ctrl+Tab, Ctrl+Shift+], etc. |
-| 602-700 | Split pane handlers | `splitPane(direction)`, `unsplitPane()`, `explodeSplit()` |
-| 702-800 | Settings integration | Load/save config via `/config`, apply theme/fonts |
-| 802-900 | Find bar | Ctrl+F overlay, regex search across terminal buffer |
-| 902-1000 | Context menu | Right-click menu (copy, paste, split, close, etc.) |
-| 1002-1100 | Highlight system | User-defined text highlights with colors |
-| 1102-1200 | Multi-window support | Window creation, cross-window communication |
-| 1202-1400 | Export/layout | Export button, YAML layout application |
-| 1402-1600 | Tab metadata | Title, badge, color updates via API |
-| 1602-1800 | Terminal resize | FitAddon + debounce + send resize to backend |
-| 1802-1900 | Init on DOMContentLoaded | Bootstrap the app |
-| 1902-2009 | Utility functions | Debounce, throttle, DOM helpers |
+| Component | Responsibility |
+|---|---|
+| `SplitGrid.ts` | Walks split tree, creates DOM nodes, divider handle dragging & ratio updates |
+| `SettingsModal.ts` | Configuration dialog (Appearance, General, Keybindings, Remote Access, Attention Bell) |
+| `ProfileDropdown.ts` | Shell launcher, admin elevation menu, Remote Access & layout exporter triggers |
+| `RemoteAccessModal.ts` | Remote Access server controls, password generator, IP/QR code generator |
+| `ContextMenu.ts` | Terminal pane & tab header context menus with intelligent path/URL context actions |
+| `InputModal.ts` | Text prompt dialog (tab renaming) |
+| `HighlightsModal.ts` | Search term highlight list manager |
+| `TabBar.ts` | Tab strip overflow scroll controls (`◄`/`►`) & drag spacer window controls |
 
-**Key state**:
-- `terminals: Map<string, Terminal>` — tab ID → xterm instance
-- `tabs: TabInfo[]` — current tab list from backend
-- `settings: AppConfig` — cached config
-- `currentWindowId: string` — from URL params
+### Mobile Web Client (`web/`)
 
-**WebSocket protocol**: Each tab gets its own WebSocket at `/tabs/{id}/ws?window={winId}`. Messages: text (PTY output) or JSON `{"type":"resize","cols":N,"rows":N}`.
-
----
-
-### `src/components/SplitGrid.ts` — Split Pane Renderer
-
-**Lines**: 111
-
-| Line | Function | Input | Output | Responsibility |
-|------|----------|-------|--------|---------------|
-| 10 | `renderLayout(layoutNodes, container, callbacks)` | (LayoutNode[], HTMLElement, callbacks) | | Walk layout tree, create split DOM |
-| 30 | `createSplitNode(node, callbacks)` | (LayoutNode, callbacks) | HTMLElement | Recursive split rendering with ratio-based sizing |
-| 70 | `createResizeHandle(splitId, direction)` | (string, string) | HTMLElement | Draggable divider bar |
-| 90 | (drag logic) | | | Update ratio via POST `/layout/ratio` |
-
----
-
-### `src/components/SettingsModal.ts` — Settings UI
-
-**Lines**: 495
-
-| Line | Function | Input | Output | Responsibility |
-|------|----------|-------|--------|---------------|
-| 15 | `openSettings()` | — | | Build and show modal overlay |
-| 30 | `buildFontSection()` | — | HTMLElement | Font family + size inputs |
-| 60 | `buildThemeSection()` | — | HTMLElement | Color pickers for all theme fields |
-| 120 | `buildTerminalSection()` | — | HTMLElement | Default profile, cols, rows, padding, ring buffer |
-| 200 | `buildHighlightSection()` | — | HTMLElement | User-defined highlight rules |
-| 300 | `applySettings()` | — | | POST `/config`, update xterm themes, resize |
-| 350 | `loadSettings()` | — | AppConfig | GET `/config` |
-| 400 | (highlight CRUD) | | | Add/edit/delete highlight patterns |
+| File | Purpose |
+|---|---|
+| `web/index.html` | Touch-friendly web terminal UI with shell picker modal for PowerShell, CMD, WSL, Git Bash |
+| `web/mobile-keyboard.js` | Virtual touch keyboard with Ctrl/Alt modifier toggles, arrow keys, and shell shortcuts |
+| `web/mobile.html` | Mobile viewport layout container |
 
 ---
 
 ## Data Flow Summary
 
 ```
-CLI (client.rs)
-  ↓ HTTP
-Axum daemon (daemon/mod.rs)
+CLI Client (client.rs)
+  ↓ Win32 Named Pipe (\\.\pipe\kterm_daemon)
+Daemon Server (named_pipe.rs / ipc.rs)
   ↓
 PtyManager (pty/manager.rs) → PtySession → PTY (portable-pty)
-  ↓ broadcast
-WebSocket (daemon/mod.rs ws_handler)
-  ↓
-Frontend (main.ts) → xterm.js → DOM
+  ↓ Tauri Events / Channel
+Frontend (main.ts / daemon.ts) → xterm.js → DOM
 ```
 
 **Config path**: `AppConfig::load()` → `%APPDATA%/kterm/config.json`
-**YAML path**: CLI reads file → POST `/apply` → `yaml::apply_yaml_spec()` → spawn sessions + build layout tree
-**Export path**: GET `/export-layout` → `exporter::export_yaml_layout()` → serialize layout tree → YAML string
+**YAML path**: CLI reads file → Named Pipe → `yaml::apply_yaml_spec()` → spawn sessions + build layout tree
+**Export path**: Named pipe / UI → `exporter::export_yaml_layout()` → serialize layout tree → YAML string
+**Remote Access path**: Browser → Axum HTTP/WS (`remote.rs`) → PtySession WebSocket relay
