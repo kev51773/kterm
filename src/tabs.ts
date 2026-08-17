@@ -15,6 +15,7 @@ import { createTabLocal, removeTabLocal } from './terminal';
 import { renderActiveLayout, containsTab, getTabIdsInNode } from './splits';
 import { syncTabs } from './daemon';
 import { showTabHeaderContextMenu } from './components/ContextMenu';
+import { clearTabPulseByPane, isPanePulsing } from './attentionBell';
 
 let checkTabOverflowFn: (() => void) | null = null;
 
@@ -23,6 +24,7 @@ export function registerCheckTabOverflow(fn: () => void) {
 }
 
 export function setFocusedPane(tabId: string) {
+  clearTabPulseByPane(tabId);
   setActivePaneId(tabId);
   setActiveTabId(tabId);
 
@@ -131,8 +133,12 @@ export function renderTabBarHeaders() {
     const tabEl = document.createElement('div');
     tabEl.className = 'tab-item';
     tabEl.setAttribute('data-tauri-drag-region', 'false');
+    tabEl.setAttribute('data-pane-ids', paneIds.join(','));
     if (activeTabId && paneIds.includes(activeTabId)) {
       tabEl.classList.add('active');
+    }
+    if (paneIds.some((pId) => isPanePulsing(pId))) {
+      tabEl.classList.add('tab-pulsing');
     }
 
     const titleEl = document.createElement('span');

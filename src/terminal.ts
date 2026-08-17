@@ -23,6 +23,7 @@ import { CAMPBELL_THEME } from './config';
 import { updatePaneHighlights } from './highlights';
 import { showFindBar, getTerminalBufferText } from './findBar';
 import { connectWebSocket } from './daemon';
+import { clearTabPulseByPane, checkTaskCompletion } from './attentionBell';
 import { showTerminalContextMenu } from './components/ContextMenu';
 
 export interface TerminalCallbacks {
@@ -81,8 +82,13 @@ export function createTabLocal(tabData: TabData) {
 
   term.open(pane);
 
+  pane.addEventListener('click', () => {
+    clearTabPulseByPane(id);
+  });
+
   term.onWriteParsed(() => {
     updatePaneHighlights(id);
+    checkTaskCompletion(instance);
   });
 
   // Smart Ctrl+C & Custom Key Handlers

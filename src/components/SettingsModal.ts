@@ -6,6 +6,10 @@ export interface AppConfig {
   default_rows?: number;
   ring_buffer_kb: number;
   terminal_padding: number;
+  reminder_seconds?: number;
+  reminder_trigger?: string;
+  reminder_audio?: boolean;
+  reminder_pulse?: boolean;
   font: {
     family: string;
     size: number;
@@ -320,25 +324,58 @@ export class SettingsModal {
         });
       } else if (tabName === 'general') {
         content.innerHTML = `
-          <div class="settings-group">
-            <label>Default Profile</label>
-            <select id="cfg-default-profile">
-              <option value="powershell" ${this.currentConfig!.default_profile === 'powershell' ? 'selected' : ''}>PowerShell</option>
-              <option value="cmd" ${this.currentConfig!.default_profile === 'cmd' ? 'selected' : ''}>Command Prompt</option>
-              <option value="wsl" ${this.currentConfig!.default_profile === 'wsl' ? 'selected' : ''}>WSL</option>
-              <option value="git-bash" ${this.currentConfig!.default_profile === 'git-bash' ? 'selected' : ''}>Git Bash</option>
-            </select>
-          <div class="settings-group">
-            <label>Default Grid Columns (Width)</label>
-            <input type="number" id="cfg-default-cols" value="${this.currentConfig!.default_cols || 120}" min="40" max="300" />
+          <div class="settings-category">
+            <div class="settings-category-title">Terminal Defaults</div>
+            <div class="settings-group">
+              <label>Default Profile</label>
+              <select id="cfg-default-profile">
+                <option value="powershell" ${this.currentConfig!.default_profile === 'powershell' ? 'selected' : ''}>PowerShell</option>
+                <option value="cmd" ${this.currentConfig!.default_profile === 'cmd' ? 'selected' : ''}>Command Prompt</option>
+                <option value="wsl" ${this.currentConfig!.default_profile === 'wsl' ? 'selected' : ''}>WSL</option>
+                <option value="git-bash" ${this.currentConfig!.default_profile === 'git-bash' ? 'selected' : ''}>Git Bash</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label>Default Grid Columns (Width)</label>
+              <input type="number" id="cfg-default-cols" value="${this.currentConfig!.default_cols || 120}" min="40" max="300" />
+            </div>
+            <div class="settings-group">
+              <label>Default Grid Rows (Height)</label>
+              <input type="number" id="cfg-default-rows" value="${this.currentConfig!.default_rows || 30}" min="10" max="150" />
+            </div>
+            <div class="settings-group">
+              <label>Ring Buffer Capacity (KB per tab)</label>
+              <input type="number" id="cfg-ring-buffer" value="${this.currentConfig!.ring_buffer_kb}" min="64" max="4096" step="64" />
+            </div>
           </div>
-          <div class="settings-group">
-            <label>Default Grid Rows (Height)</label>
-            <input type="number" id="cfg-default-rows" value="${this.currentConfig!.default_rows || 30}" min="10" max="150" />
-          </div>
-          <div class="settings-group">
-            <label>Ring Buffer Capacity (KB per tab)</label>
-            <input type="number" id="cfg-ring-buffer" value="${this.currentConfig!.ring_buffer_kb}" min="64" max="4096" step="64" />
+
+          <div class="settings-category">
+            <div class="settings-category-title">Attention Bell & Task Reminders</div>
+            <div class="settings-group">
+              <label>Remind me when long tasks finish</label>
+              <select id="cfg-reminder-trigger">
+                <option value="unfocused" ${(this.currentConfig!.reminder_trigger ?? 'unfocused') === 'unfocused' ? 'selected' : ''}>Only if tab unfocused or app window unfocused</option>
+                <option value="always" ${this.currentConfig!.reminder_trigger === 'always' ? 'selected' : ''}>Always</option>
+                <option value="never" ${this.currentConfig!.reminder_trigger === 'never' ? 'selected' : ''}>Never</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label>Reminder for tasks longer than (seconds)</label>
+              <input type="number" id="cfg-reminder-seconds" value="${this.currentConfig!.reminder_seconds ?? 10}" min="1" max="3600" />
+            </div>
+            <div class="settings-group">
+              <label>Reminder Types</label>
+              <div style="display: flex; gap: 16px; margin-top: 6px;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input type="checkbox" id="cfg-reminder-audio" ${this.currentConfig!.reminder_audio ?? true ? 'checked' : ''} />
+                  Audio
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input type="checkbox" id="cfg-reminder-pulse" ${this.currentConfig!.reminder_pulse ?? true ? 'checked' : ''} />
+                  Pulse Tab
+                </label>
+              </div>
+            </div>
           </div>
         `;
         const colsIn = content.querySelector('#cfg-default-cols') as HTMLInputElement | null;
@@ -353,6 +390,31 @@ export class SettingsModal {
           rowsIn.addEventListener('input', () => {
             const v = parseInt(rowsIn.value, 10);
             if (!isNaN(v) && v > 0) this.currentConfig!.default_rows = v;
+          });
+        }
+        const remSecIn = content.querySelector('#cfg-reminder-seconds') as HTMLInputElement | null;
+        if (remSecIn) {
+          remSecIn.addEventListener('input', () => {
+            const v = parseInt(remSecIn.value, 10);
+            if (!isNaN(v) && v > 0) this.currentConfig!.reminder_seconds = v;
+          });
+        }
+        const remTrigIn = content.querySelector('#cfg-reminder-trigger') as HTMLSelectElement | null;
+        if (remTrigIn) {
+          remTrigIn.addEventListener('change', () => {
+            this.currentConfig!.reminder_trigger = remTrigIn.value;
+          });
+        }
+        const remAudioIn = content.querySelector('#cfg-reminder-audio') as HTMLInputElement | null;
+        if (remAudioIn) {
+          remAudioIn.addEventListener('change', () => {
+            this.currentConfig!.reminder_audio = remAudioIn.checked;
+          });
+        }
+        const remPulseIn = content.querySelector('#cfg-reminder-pulse') as HTMLInputElement | null;
+        if (remPulseIn) {
+          remPulseIn.addEventListener('change', () => {
+            this.currentConfig!.reminder_pulse = remPulseIn.checked;
           });
         }
       } else if (tabName === 'keybindings') {
@@ -476,6 +538,18 @@ export class SettingsModal {
 
     const bufferEl = document.getElementById('cfg-ring-buffer') as HTMLInputElement | null;
     if (bufferEl) this.currentConfig.ring_buffer_kb = parseInt(bufferEl.value, 10) || 256;
+
+    const reminderSecEl = document.getElementById('cfg-reminder-seconds') as HTMLInputElement | null;
+    if (reminderSecEl) this.currentConfig.reminder_seconds = Math.max(1, parseInt(reminderSecEl.value, 10) || 10);
+
+    const reminderTrigEl = document.getElementById('cfg-reminder-trigger') as HTMLSelectElement | null;
+    if (reminderTrigEl) this.currentConfig.reminder_trigger = reminderTrigEl.value;
+
+    const reminderAudioEl = document.getElementById('cfg-reminder-audio') as HTMLInputElement | null;
+    if (reminderAudioEl) this.currentConfig.reminder_audio = reminderAudioEl.checked;
+
+    const reminderPulseEl = document.getElementById('cfg-reminder-pulse') as HTMLInputElement | null;
+    if (reminderPulseEl) this.currentConfig.reminder_pulse = reminderPulseEl.checked;
 
     this.isSaved = true;
     try {

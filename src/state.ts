@@ -61,6 +61,10 @@ export let activeAppConfig: AppConfig = {
   default_rows: 30,
   ring_buffer_kb: 256,
   terminal_padding: 8,
+  reminder_seconds: 10,
+  reminder_trigger: 'unfocused',
+  reminder_audio: true,
+  reminder_pulse: true,
   font: { family: 'Consolas, "Courier New", monospace', size: 14 },
   theme: { background: '#0d0e11', foreground: '#cccccc', highlight: '#61afef' },
 };

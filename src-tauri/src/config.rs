@@ -86,6 +86,18 @@ fn default_ring_buffer_kb() -> usize {
 fn default_terminal_padding() -> u32 {
     8
 }
+fn default_reminder_seconds() -> u32 {
+    10
+}
+fn default_reminder_trigger() -> String {
+    "unfocused".to_string()
+}
+fn default_reminder_audio() -> bool {
+    true
+}
+fn default_reminder_pulse() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -99,6 +111,14 @@ pub struct AppConfig {
     pub ring_buffer_kb: usize,
     #[serde(default = "default_terminal_padding")]
     pub terminal_padding: u32,
+    #[serde(default = "default_reminder_seconds")]
+    pub reminder_seconds: u32,
+    #[serde(default = "default_reminder_trigger")]
+    pub reminder_trigger: String,
+    #[serde(default = "default_reminder_audio")]
+    pub reminder_audio: bool,
+    #[serde(default = "default_reminder_pulse")]
+    pub reminder_pulse: bool,
     #[serde(default)]
     pub font: FontConfig,
     #[serde(default)]
@@ -113,6 +133,10 @@ impl Default for AppConfig {
             default_rows: 30,
             ring_buffer_kb: 256,
             terminal_padding: 8,
+            reminder_seconds: 10,
+            reminder_trigger: "unfocused".to_string(),
+            reminder_audio: true,
+            reminder_pulse: true,
             font: FontConfig::default(),
             theme: ThemeConfig::default(),
         }

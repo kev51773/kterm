@@ -14,6 +14,7 @@ import {
   unsplitShrinkPending,
 } from './state';
 import { loadInitialConfig } from './config';
+import { onTerminalInput } from './attentionBell';
 
 export interface DaemonCallbacks {
   createTabLocal: (data: TabData) => void;
@@ -70,6 +71,7 @@ export function connectWebSocket(instance: PaneInstance) {
   });
 
   instance.term.onData((data) => {
+    onTerminalInput(instance.id, data);
     invoke('send_pty_input', { tabId: instance.id, data });
   });
 }

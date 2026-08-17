@@ -100,6 +100,23 @@ html, body {
   z-index: 2;
 }
 
+@keyframes tab-pulse-anim {
+  0% {
+    box-shadow: inset 0 0 0px transparent;
+  }
+  50% {
+    box-shadow: inset 0 0 14px rgba(59, 130, 246, 0.9);
+    background-color: rgba(59, 130, 246, 0.4) !important;
+  }
+  100% {
+    box-shadow: inset 0 0 0px transparent;
+  }
+}
+
+.tab-item.tab-pulsing {
+  animation: tab-pulse-anim 1.5s ease-in-out 1 !important;
+}
+
 .tab-title {
   white-space: nowrap;
   overflow: hidden;
@@ -603,6 +620,28 @@ html, body {
   margin-bottom: 2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 4px;
+}
+
+.settings-category {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.settings-category-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--inactive-tab-fg, #abb2bf);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .settings-group {
