@@ -8,20 +8,27 @@
 //! flag is on and no 100% monitor exists, window creation fails with a clear
 //! error instead of silently producing flaky screenshots.
 
+#[cfg(windows)]
 use std::sync::Mutex;
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::{BOOL, LPARAM, RECT};
+#[cfg(windows)]
 use windows_sys::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
+#[cfg(windows)]
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 
+#[cfg(windows)]
 struct MonitorInfo {
     work: RECT,
     dpi: u32,
 }
 
+#[cfg(windows)]
 static MONITORS: Mutex<Vec<MonitorInfo>> = Mutex::new(Vec::new());
 
+#[cfg(windows)]
 unsafe extern "system" fn enum_monitor(
     hm: HMONITOR,
     _hdc: HDC,
@@ -49,33 +56,42 @@ unsafe extern "system" fn enum_monitor(
 /// (normal placement, no behavior change). Test mode with no 100% monitor:
 /// `Err` — the caller fails window creation.
 pub fn placement_for_window(w: f64, h: f64) -> Result<Option<(f64, f64)>, String> {
-    if std::env::var("KTERM_TEST_FORCE_100DPI").as_deref() != Ok("1") {
-        return Ok(None);
-    }
-    let mut monitors = MONITORS
-        .lock()
-        .map_err(|_| "display monitor enumeration lock poisoned")?;
-    monitors.clear();
-    let ok = unsafe {
-        EnumDisplayMonitors(
-            std::ptr::null_mut(),
-            std::ptr::null(),
-            Some(enum_monitor),
-            0,
-        )
-    };
-    if ok == 0 {
-        return Err("failed to enumerate monitors".to_string());
-    }
-    match monitors.iter().find(|m| m.dpi == 96) {
-        Some(m) => {
-            let x = m.work.left as f64 + ((m.work.right - m.work.left) as f64 - w) / 2.0;
-            let y = m.work.top as f64 + ((m.work.bottom - m.work.top) as f64 - h) / 2.0;
-            Ok(Some((x.max(0.0), y.max(0.0))))
+    #[cfg(windows)]
+    {
+        if std::env::var("KTERM_TEST_FORCE_100DPI").as_deref() != Ok("1") {
+            return Ok(None);
         }
-        None => Err(
-            "KTERM_TEST_FORCE_100DPI: no 100% (96 DPI) monitor available — connect one or remove the flag"
-                .to_string(),
-        ),
+        let mut monitors = MONITORS
+            .lock()
+            .map_err(|_| "display monitor enumeration lock poisoned")?;
+        monitors.clear();
+        let ok = unsafe {
+            EnumDisplayMonitors(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                Some(enum_monitor),
+                0,
+            )
+        };
+        if ok == 0 {
+            return Err("failed to enumerate monitors".to_string());
+        }
+        match monitors.iter().find(|m| m.dpi == 96) {
+            Some(m) => {
+                let x = m.work.left as f64 + ((m.work.right - m.work.left) as f64 - w) / 2.0;
+                let y = m.work.top as f64 + ((m.work.bottom - m.work.top) as f64 - h) / 2.0;
+                Ok(Some((x.max(0.0), y.max(0.0))))
+            }
+            None => Err(
+                "KTERM_TEST_FORCE_100DPI: no 100% (96 DPI) monitor available — connect one or remove the flag"
+                    .to_string(),
+            ),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (w, h);
+        Ok(None)
     }
 }
+

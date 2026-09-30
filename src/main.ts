@@ -65,8 +65,15 @@ import {
   renderProfileDropdownMenu,
 } from './components/ProfileDropdown';
 import { setupTabBarControls } from './components/TabBar';
+import { isMac } from './config';
 
-document.title = `kterm.exe - A scriptable terminal - ${currentWindowId}`;
+if (isMac) {
+  document.body.classList.add('platform-mac');
+}
+
+document.title = isMac
+  ? `kterm - A scriptable terminal - ${currentWindowId}`
+  : `kterm.exe - A scriptable terminal - ${currentWindowId}`;
 
 // Register cross-module callbacks
 registerAdjustWindowForGrid(adjustWindowForGrid);

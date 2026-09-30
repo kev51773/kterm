@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { PROFILES } from '../config';
 
 export interface AppConfig {
   default_profile: string;
@@ -329,10 +330,10 @@ export class SettingsModal {
             <div class="settings-group">
               <label>Default Profile</label>
               <select id="cfg-default-profile">
-                <option value="powershell" ${this.currentConfig!.default_profile === 'powershell' ? 'selected' : ''}>PowerShell</option>
-                <option value="cmd" ${this.currentConfig!.default_profile === 'cmd' ? 'selected' : ''}>Command Prompt</option>
-                <option value="wsl" ${this.currentConfig!.default_profile === 'wsl' ? 'selected' : ''}>WSL</option>
-                <option value="git-bash" ${this.currentConfig!.default_profile === 'git-bash' ? 'selected' : ''}>Git Bash</option>
+                ${PROFILES.map(
+                  (p) => `<option value="${p.id}" ${this.currentConfig!.default_profile === p.id ? 'selected' : ''}>${p.label}</option>`
+                ).join('')}
+                ${!PROFILES.some((p) => p.id === this.currentConfig!.default_profile) ? `<option value="${this.currentConfig!.default_profile}" selected>${this.currentConfig!.default_profile}</option>` : ''}
               </select>
             </div>
             <div class="settings-group">

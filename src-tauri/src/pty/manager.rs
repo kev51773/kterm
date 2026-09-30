@@ -101,6 +101,7 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
+        #[cfg(windows)]
         let bash_path = if std::path::Path::new("C:\\Program Files\\Git\\bin\\bash.exe").exists() {
             "C:\\Program Files\\Git\\bin\\bash.exe".to_string()
         } else if let Ok(local) = std::env::var("LOCALAPPDATA") {
@@ -119,7 +120,7 @@ impl PtyManager {
             Box<dyn Read + Send>,
             Arc<Mutex<Option<Box<dyn Child + Send>>>>,
             u32,
-        ) = if elevated && !is_app_elevated() {
+        ) = if cfg!(windows) && elevated && !is_app_elevated() {
             #[cfg(windows)]
             {
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
@@ -193,9 +194,10 @@ impl PtyManager {
             }
             #[cfg(not(windows))]
             {
-                return Err("Elevation bridging is only supported on Windows".to_string());
+                unreachable!()
             }
         } else {
+            #[cfg(windows)]
             let mut cmd = match profile.to_lowercase().as_str() {
                 "cmd" => {
                     let mut c = CommandBuilder::new("cmd.exe");
@@ -228,6 +230,31 @@ impl PtyManager {
                 }
             };
 
+            #[cfg(not(windows))]
+            let mut cmd = {
+                let default_shell = std::env::var("SHELL").unwrap_or_else(|_| {
+                    if cfg!(target_os = "macos") {
+                        "/bin/zsh".to_string()
+                    } else {
+                        "/bin/bash".to_string()
+                    }
+                });
+
+                let shell_cmd = match profile.to_lowercase().as_str() {
+                    "zsh" => "zsh".to_string(),
+                    "bash" => "bash".to_string(),
+                    "fish" => "fish".to_string(),
+                    "sh" => "sh".to_string(),
+                    "powershell" | "cmd" | "wsl" | "git-bash" => default_shell,
+                    custom if !custom.trim().is_empty() => custom.to_string(),
+                    _ => default_shell,
+                };
+                let mut c = CommandBuilder::new(shell_cmd);
+                c.arg("-l");
+                c.env("TERM", "xterm-256color");
+                c
+            };
+
             if let Some(dir) = cwd {
                 if !dir.trim().is_empty() {
                     cmd.cwd(dir);
@@ -240,7 +267,6 @@ impl PtyManager {
                 .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
             let pid = child.process_id().unwrap_or(0);
-            #[cfg(windows)]
             assign_pid_to_job(pid);
 
             let master_writer = pair.master.take_writer().map_err(|e| e.to_string())?;

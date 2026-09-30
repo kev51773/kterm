@@ -2,12 +2,24 @@ import { invoke } from '@tauri-apps/api/core';
 import { AppConfig } from './components/SettingsModal';
 import { activeAppConfig, setActiveAppConfig, tabsMap } from './state';
 
-export const PROFILES = [
-  { id: 'powershell', label: 'PowerShell' },
-  { id: 'cmd', label: 'Command Prompt' },
-  { id: 'wsl', label: 'WSL' },
-  { id: 'git-bash', label: 'Git Bash' },
-];
+export const isMac =
+  typeof navigator !== 'undefined' &&
+  (/Macintosh|Mac OS X/i.test(navigator.userAgent) ||
+    (navigator as any).userAgentData?.platform === 'macOS' ||
+    navigator.platform?.toUpperCase().indexOf('MAC') >= 0);
+
+export const PROFILES = isMac
+  ? [
+      { id: 'zsh', label: 'Zsh' },
+      { id: 'bash', label: 'Bash' },
+      { id: 'fish', label: 'Fish' },
+    ]
+  : [
+      { id: 'powershell', label: 'PowerShell' },
+      { id: 'cmd', label: 'Command Prompt' },
+      { id: 'wsl', label: 'WSL' },
+      { id: 'git-bash', label: 'Git Bash' },
+    ];
 
 export const CAMPBELL_THEME = {
   black: '#0C0C0C',

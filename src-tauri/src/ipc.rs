@@ -128,6 +128,18 @@ pub fn open_target(target: String) -> Result<(), String> {
             .args(["/C", "start", "", t])
             .spawn();
     }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(t)
+            .spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(t)
+            .spawn();
+    }
     Ok(())
 }
 
@@ -141,6 +153,18 @@ pub fn reveal_target(path: String) -> Result<(), String> {
     {
         let _ = std::process::Command::new("explorer")
             .arg(format!("/select,{}", p))
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .args(["-R", p])
+            .spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(p)
             .spawn();
     }
     Ok(())
@@ -178,6 +202,22 @@ pub fn get_clipboard() -> String {
                     }
                 }
                 CloseClipboard();
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("pbpaste").output() {
+            if output.status.success() {
+                return String::from_utf8_lossy(&output.stdout).to_string();
+            }
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Ok(output) = std::process::Command::new("xclip").args(["-selection", "clipboard", "-o"]).output() {
+            if output.status.success() {
+                return String::from_utf8_lossy(&output.stdout).to_string();
             }
         }
     }

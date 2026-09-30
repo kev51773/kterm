@@ -186,7 +186,12 @@ pub fn export_shortcut_for_yaml(yaml_path_str: &str) -> Result<String, String> {
             .join(yaml_path)
     };
 
+    #[cfg(target_os = "windows")]
     let shortcut_path = abs_yaml.with_extension("lnk");
+    #[cfg(target_os = "macos")]
+    let shortcut_path = abs_yaml.with_extension("command");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let shortcut_path = abs_yaml.with_extension("sh");
 
     let exe_path = std::env::current_exe()
         .map_err(|e| format!("Failed to get current exe path: {}", e))?;
@@ -219,6 +224,22 @@ pub fn export_shortcut_for_yaml(yaml_path_str: &str) -> Result<String, String> {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
+    {
+        let script = format!("#!/bin/sh\n\"{}\" --apply \"{}\" --suffix-auto\n", exe_str, yaml_str);
+        std::fs::write(&shortcut_path, script)
+            .map_err(|e| format!("Failed to write launcher script: {}", e))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = std::fs::metadata(&shortcut_path) {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o755);
+                let _ = std::fs::set_permissions(&shortcut_path, perms);
+            }
+        }
+    }
+
     Ok(shortcut_str)
 }
 
@@ -237,7 +258,12 @@ mod tests {
 
         let shortcut_path = std::path::PathBuf::from(shortcut_res.unwrap());
         assert!(shortcut_path.exists(), "Shortcut file does not exist");
+        #[cfg(target_os = "windows")]
         assert_eq!(shortcut_path.extension().unwrap(), "lnk");
+        #[cfg(target_os = "macos")]
+        assert_eq!(shortcut_path.extension().unwrap(), "command");
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        assert_eq!(shortcut_path.extension().unwrap(), "sh");
 
         let _ = std::fs::remove_file(&test_yaml);
         let _ = std::fs::remove_file(&shortcut_path);

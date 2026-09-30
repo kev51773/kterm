@@ -247,6 +247,14 @@ html, body {
   flex-shrink: 0;
 }
 
+body.platform-mac #window-controls {
+  display: none !important;
+}
+
+body.platform-mac #tab-bar {
+  padding-left: 78px;
+}
+
 #window-controls button {
   background: transparent;
   border: none;

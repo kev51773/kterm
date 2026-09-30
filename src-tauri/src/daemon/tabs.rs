@@ -47,7 +47,7 @@ pub async fn create_tab(
         .as_ref()
         .and_then(|p| p.profile.clone())
         .filter(|p| !p.trim().is_empty())
-        .unwrap_or_else(|| "powershell".to_string());
+        .unwrap_or_else(|| crate::config::AppConfig::load().default_profile);
 
     let window_id = payload
         .as_ref()

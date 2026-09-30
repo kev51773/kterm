@@ -87,8 +87,8 @@ fn validate_split(split: &YamlSplitSpec) -> Result<(), String> {
 
 fn validate_profile(profile: &str) -> Result<(), String> {
     let p = profile.to_lowercase();
-    if !matches!(p.as_str(), "powershell" | "cmd" | "wsl" | "git-bash" | "bash") {
-        return Err(format!("Invalid profile '{}'. Must be one of: powershell, cmd, wsl, git-bash", profile));
+    if !matches!(p.as_str(), "powershell" | "cmd" | "wsl" | "git-bash" | "bash" | "zsh" | "fish" | "sh") {
+        return Err(format!("Invalid profile '{}'. Must be one of: powershell, cmd, wsl, git-bash, bash, zsh, fish, sh", profile));
     }
     Ok(())
 }
@@ -445,7 +445,7 @@ tabs:
             window: YamlWindowSpec { id: None, title: None },
             tabs: vec![YamlTabSpec {
                 id: None,
-                profile: "fish".into(),
+                profile: "invalid_profile".into(),
                 title: None, badge: None, color: None, cwd: None,
                 admin: None, elevated: None, send_text: None, splits: None,
             }],
@@ -477,14 +477,14 @@ tabs:
 
     #[test]
     fn valid_profiles() {
-        for p in &["powershell", "cmd", "wsl", "git-bash", "bash"] {
+        for p in &["powershell", "cmd", "wsl", "git-bash", "bash", "zsh", "fish", "sh"] {
             assert!(validate_profile(p).is_ok(), "expected valid: {}", p);
         }
     }
 
     #[test]
     fn invalid_profiles() {
-        for p in &["fish", "zsh", "powershell "] {
+        for p in &["unknown_shell", "invalid_cli", "powershell "] {
             assert!(validate_profile(p).is_err(), "expected invalid: {}", p);
         }
     }
@@ -621,7 +621,7 @@ tabs:
 
     #[test]
     fn yaml_rejects_invalid_profile() {
-        let yaml = "window:\n  id: win-1\ntabs:\n- profile: fish\n";
+        let yaml = "window:\n  id: win-1\ntabs:\n- profile: invalid_profile\n";
         let spec = parse_yaml(yaml).unwrap();
         assert!(validate_yaml(&spec).is_err());
     }

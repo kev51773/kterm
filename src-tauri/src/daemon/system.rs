@@ -52,6 +52,24 @@ pub async fn get_clipboard() -> impl IntoResponse {
             }
         }
     }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("pbpaste").output() {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout).to_string();
+                return (StatusCode::OK, Json(serde_json::json!({ "text": text })));
+            }
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Ok(output) = std::process::Command::new("xclip").args(["-selection", "clipboard", "-o"]).output() {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout).to_string();
+                return (StatusCode::OK, Json(serde_json::json!({ "text": text })));
+            }
+        }
+    }
     (StatusCode::OK, Json(serde_json::json!({ "text": "" })))
 }
 
@@ -67,6 +85,24 @@ pub async fn open_target(
     {
         let res = std::process::Command::new("cmd")
             .args(["/C", "start", "", target])
+            .spawn();
+        if res.is_ok() {
+            return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let res = std::process::Command::new("open")
+            .arg(target)
+            .spawn();
+        if res.is_ok() {
+            return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let res = std::process::Command::new("xdg-open")
+            .arg(target)
             .spawn();
         if res.is_ok() {
             return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
@@ -88,6 +124,24 @@ pub async fn reveal_target(
     {
         let res = std::process::Command::new("explorer")
             .arg(format!("/select,{}", path))
+            .spawn();
+        if res.is_ok() {
+            return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let res = std::process::Command::new("open")
+            .args(["-R", path])
+            .spawn();
+        if res.is_ok() {
+            return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let res = std::process::Command::new("xdg-open")
+            .arg(path)
             .spawn();
         if res.is_ok() {
             return (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })));

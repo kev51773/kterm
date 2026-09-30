@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+#[cfg(windows)]
 pub const PIPE_NAME: &str = r"\\.\pipe\kterm_daemon";
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -493,6 +494,16 @@ pub async fn handle_request(req: CliRequest, state: &AppState) -> CliResponse {
     }
 }
 
+#[cfg(unix)]
+pub fn get_ipc_socket_path() -> std::path::PathBuf {
+    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+        std::path::PathBuf::from(runtime_dir).join("kterm.sock")
+    } else {
+        let uid = unsafe { libc::getuid() };
+        std::env::temp_dir().join(format!("kterm_{}.sock", uid))
+    }
+}
+
 pub async fn start_pipe_server(state: AppState) {
     #[cfg(windows)]
     {
@@ -545,4 +556,58 @@ pub async fn start_pipe_server(state: AppState) {
             }
         }
     }
+
+    #[cfg(unix)]
+    {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::UnixListener;
+
+        let socket_path = get_ipc_socket_path();
+        if socket_path.exists() {
+            let _ = std::fs::remove_file(&socket_path);
+        }
+
+        let listener = match UnixListener::bind(&socket_path) {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::error!("[named_pipe] Error binding Unix socket {:?}: {}", socket_path, e);
+                return;
+            }
+        };
+
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let state_clone = state.clone();
+                    tokio::spawn(async move {
+                        let (reader, mut writer) = tokio::io::split(stream);
+                        let mut buf_reader = BufReader::new(reader);
+                        let mut line = String::new();
+
+                        while let Ok(n) = buf_reader.read_line(&mut line).await {
+                            if n == 0 {
+                                break;
+                            }
+                            let response = match serde_json::from_str::<CliRequest>(&line) {
+                                Ok(req) => handle_request(req, &state_clone).await,
+                                Err(e) => CliResponse::err(format!("Invalid JSON-RPC payload: {}", e)),
+                            };
+                            let mut resp_str = serde_json::to_string(&response).unwrap();
+                            resp_str.push('\n');
+                            if writer.write_all(resp_str.as_bytes()).await.is_err() {
+                                break;
+                            }
+                            let _ = writer.flush().await;
+                            line.clear();
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::error!("[named_pipe] Error accepting Unix socket connection: {}", e);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+    }
 }
+

@@ -10,8 +10,13 @@ pub struct FontConfig {
 
 impl Default for FontConfig {
     fn default() -> Self {
+        #[cfg(target_os = "macos")]
+        let family = "Menlo, Monaco, 'Courier New', monospace".to_string();
+        #[cfg(not(target_os = "macos"))]
+        let family = "Consolas, 'Courier New', monospace".to_string();
+
         Self {
-            family: "Consolas, 'Courier New', monospace".to_string(),
+            family,
             size: 14,
         }
     }
@@ -78,7 +83,18 @@ fn default_rows() -> u16 {
     30
 }
 fn default_profile() -> String {
-    "powershell".to_string()
+    #[cfg(target_os = "macos")]
+    {
+        "zsh".to_string()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "bash".to_string()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        "powershell".to_string()
+    }
 }
 fn default_ring_buffer_kb() -> usize {
     256
@@ -128,7 +144,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            default_profile: "powershell".to_string(),
+            default_profile: default_profile(),
             default_cols: 120,
             default_rows: 30,
             ring_buffer_kb: 256,
@@ -149,6 +165,19 @@ impl AppConfig {
             PathBuf::from(appdata).join("kterm").join("config.json")
         } else if let Ok(home) = std::env::var("USERPROFILE") {
             PathBuf::from(home).join(".config").join("kterm").join("config.json")
+        } else if let Ok(home) = std::env::var("HOME") {
+            #[cfg(target_os = "macos")]
+            {
+                PathBuf::from(home)
+                    .join("Library")
+                    .join("Application Support")
+                    .join("kterm")
+                    .join("config.json")
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                PathBuf::from(home).join(".config").join("kterm").join("config.json")
+            }
         } else {
             PathBuf::from("config.json")
         }
@@ -198,6 +227,11 @@ mod tests {
     #[test]
     fn test_default_config() {
         let cfg = AppConfig::default();
+        #[cfg(target_os = "macos")]
+        assert_eq!(cfg.default_profile, "zsh");
+        #[cfg(target_os = "linux")]
+        assert_eq!(cfg.default_profile, "bash");
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         assert_eq!(cfg.default_profile, "powershell");
         assert_eq!(cfg.ring_buffer_kb, 256);
         assert_eq!(cfg.terminal_padding, 8);
@@ -207,6 +241,9 @@ mod tests {
     fn test_default_font() {
         let font = FontConfig::default();
         assert_eq!(font.size, 14);
+        #[cfg(target_os = "macos")]
+        assert!(font.family.contains("Menlo"));
+        #[cfg(not(target_os = "macos"))]
         assert!(font.family.contains("Consolas"));
     }
 

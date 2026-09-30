@@ -20,7 +20,11 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-fs = "2.5.1"
 regex = "1.10"
+[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_System_Threading", "Win32_Foundation", "Win32_System_Console", "Win32_System_Pipes"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [features]
 default = ["wry"]

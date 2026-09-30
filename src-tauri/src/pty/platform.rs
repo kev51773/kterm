@@ -20,7 +20,12 @@ pub fn is_app_elevated() -> bool {
     false
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
+pub fn is_app_elevated() -> bool {
+    unsafe { libc::geteuid() == 0 }
+}
+
+#[cfg(not(any(windows, unix)))]
 pub fn is_app_elevated() -> bool {
     false
 }
@@ -254,3 +259,16 @@ pub fn assign_pid_to_job(pid: u32) {
         }
     }
 }
+
+#[cfg(unix)]
+pub fn assign_pid_to_job(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+    unsafe {
+        let _ = libc::setpgid(pid as libc::pid_t, pid as libc::pid_t);
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
+pub fn assign_pid_to_job(_pid: u32) {}

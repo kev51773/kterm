@@ -2,7 +2,11 @@ use crate::cli::CliArgs;
 use serde_json::json;
 use std::time::Duration;
 
+#[cfg(windows)]
 pub const PIPE_NAME: &str = r"\\.\pipe\kterm_daemon";
+
+pub trait IpcStream: std::io::Read + std::io::Write {}
+impl<T: std::io::Read + std::io::Write> IpcStream for T {}
 
 pub fn is_daemon_running() -> bool {
     #[cfg(windows)]
@@ -23,29 +27,63 @@ pub fn is_daemon_running() -> bool {
         }
         false
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     {
+        use std::os::unix::net::UnixStream;
+        let sock_path = crate::named_pipe::get_ipc_socket_path();
+        if !sock_path.exists() {
+            return false;
+        }
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_millis(300) {
+            if UnixStream::connect(&sock_path).is_ok() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(15));
+        }
         false
     }
 }
 
 pub fn send_pipe_request(req: &serde_json::Value) -> Result<serde_json::Value, String> {
-    use std::fs::OpenOptions;
     use std::io::{BufRead, BufReader, Write};
 
-    let start = std::time::Instant::now();
-    let mut file = loop {
-        match OpenOptions::new().read(true).write(true).open(PIPE_NAME) {
-            Ok(f) => break f,
-            Err(e) => {
-                // Retry on OS error 231 (ERROR_PIPE_BUSY) while daemon finishes previous connection
-                if (e.raw_os_error() == Some(231) || e.kind() == std::io::ErrorKind::WouldBlock)
-                    && start.elapsed() < Duration::from_secs(10)
-                {
-                    std::thread::sleep(Duration::from_millis(15));
-                    continue;
+    #[cfg(windows)]
+    let mut file: Box<dyn IpcStream> = {
+        use std::fs::OpenOptions;
+        let start = std::time::Instant::now();
+        loop {
+            match OpenOptions::new().read(true).write(true).open(PIPE_NAME) {
+                Ok(f) => break Box::new(f),
+                Err(e) => {
+                    // Retry on OS error 231 (ERROR_PIPE_BUSY) while daemon finishes previous connection
+                    if (e.raw_os_error() == Some(231) || e.kind() == std::io::ErrorKind::WouldBlock)
+                        && start.elapsed() < Duration::from_secs(10)
+                    {
+                        std::thread::sleep(Duration::from_millis(15));
+                        continue;
+                    }
+                    return Err(format!("Failed to connect to kterm named pipe ({}): {}", PIPE_NAME, e));
                 }
-                return Err(format!("Failed to connect to kterm named pipe ({}): {}", PIPE_NAME, e));
+            }
+        }
+    };
+
+    #[cfg(unix)]
+    let mut file: Box<dyn IpcStream> = {
+        use std::os::unix::net::UnixStream;
+        let sock_path = crate::named_pipe::get_ipc_socket_path();
+        let start = std::time::Instant::now();
+        loop {
+            match UnixStream::connect(&sock_path) {
+                Ok(s) => break Box::new(s),
+                Err(e) => {
+                    if start.elapsed() < Duration::from_secs(10) {
+                        std::thread::sleep(Duration::from_millis(15));
+                        continue;
+                    }
+                    return Err(format!("Failed to connect to kterm Unix socket ({:?}): {}", sock_path, e));
+                }
             }
         }
     };

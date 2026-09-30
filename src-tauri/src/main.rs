@@ -76,7 +76,12 @@ mod integration_tests {
         let b = base(port);
         let tab = http(port).post(format!("{}/tabs", b)).json(&serde_json::json!({}))
             .send().await.unwrap().json::<TabInfo>().await.unwrap();
+        #[cfg(target_os = "windows")]
         assert_eq!(tab.profile, "powershell");
+        #[cfg(target_os = "macos")]
+        assert_eq!(tab.profile, "zsh");
+        #[cfg(target_os = "linux")]
+        assert_eq!(tab.profile, "bash");
         assert!(!tab.id.is_empty());
     }
 
@@ -267,7 +272,7 @@ mod integration_tests {
         let port = start_daemon().await;
         let b = base(port);
         let r = http(port).post(format!("{}/apply", b)).json(&serde_json::json!({
-            "yaml": "window:\n  id: null\ntabs:\n- profile: fish\n",
+            "yaml": "window:\n  id: null\ntabs:\n- profile: unknown_shell\n",
             "dry_run": true
         })).send().await.unwrap();
         assert!(r.status().is_client_error());

@@ -86,7 +86,8 @@ pub async fn apply_session(
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
     Ok(Json(serde_json::json!({
-        "status": "applied",
-        "window": window_id
+        "status": "ok",
+        "window": window_id,
+        "window_id": window_id
     })))
 }
